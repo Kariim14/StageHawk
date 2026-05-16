@@ -1,0 +1,16 @@
+PROJECT Description:
+
+ Multi-Stage Dropper Orchestrator: Step-by-Step Payload Extraction with Automated Stage-Graph Reconstruction
+Design an agent that orchestrates static disassembly (Ghidra) followed by controlled step-by-step dynamic execution (x64dbg) to unpack and trace multi-stage droppers. The agent maps inter-stage dependencies, extracts embedded payloads at each transition point, and reconstructs the full stage graph. Inspired by autonomous malware triage research requiring chainable tool selection, the orchestrator operates without manual intervention.
+14
+Core Tools Ghidra, x64dbg (scripting API), Python orchestration layer, Cuckoo Sandbox Dataset Multi-stage malware: Emotet dropper chains, Trickbot loaders from theZoo Difficulty Advanced
+Key Objectives
+• Parse dropper stage boundaries via static CFG analysis and import anomalies.
+• Automate controlled single-step execution to capture payload drops at each stage.
+• Recursively analyse extracted payloads using the same pipeline.
+• Produce a stage-dependency graph with SHA-256 hashes, IOCs, and MITRE ATT&CK chain.
+Research References
+[41] Damodaran, A. et al. (2022). A Comparison of Static, Dynamic, and Hybrid Analysis for Malware Detection. arXiv:2203.09938.
+[42] Ijaz, M. & Durad, M.H. (2023). Static and Dynamic Malware Analysis Using Machine Learning. Semantic Scholar.
+[43] Maniriho, P. et al. (2023). A Systematic Literature Review on Windows Malware Detection. Journal of Systems and Software.
+[44] Pargi, B. et al. (2026). Hybrid Malware Analysis using Static and Dynamic Techniques with Machine Learning. IJSRSET, 13(1).

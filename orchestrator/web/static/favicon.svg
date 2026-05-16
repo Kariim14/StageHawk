@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="StageHawk">
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M10 36 L37 11 L55 16 L39 29 L57 29 L36 53 L29 39 Z" fill="#dbeafe"/>
+  <path d="M34 22 L47 19 L37 28 Z" fill="#0f172a" opacity="0.95"/>
+  <path d="M45 29 L59 32 L43 39 Z" fill="#60a5fa"/>
+  <path d="M36 27 L41 25 L39 29 Z" fill="#ffffff"/>
+</svg>

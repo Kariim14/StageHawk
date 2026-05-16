@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block content %}
+{% set stats = namespace(total=0, full=0, static=0, dynamic=0, completed=0) %}
+{% for case in cases %}
+  {% set stats.total = stats.total + 1 %}
+  {% set mode = case.get('analysis_mode', 'legacy') %}
+  {% if mode == 'full' %}
+    {% set stats.full = stats.full + 1 %}
+  {% elif mode == 'static' %}
+    {% set stats.static = stats.static + 1 %}
+  {% elif mode == 'dynamic' %}
+    {% set stats.dynamic = stats.dynamic + 1 %}
+  {% endif %}
+  {% set status = case.get('current_status', '') %}
+  {% if status in ['completed', 'completed_with_warnings'] %}
+    {% set stats.completed = stats.completed + 1 %}
+  {% endif %}
+{% endfor %}
+
+<section class="dashboard-hero">
+  <div>
+    <p class="eyebrow">StageHawk Dashboard</p>
+    <h1>Cases</h1>
+    <p class="muted">Local defensive malware-analysis cases, newest first.</p>
+  </div>
+  <a class="button" href="/new">Start new analysis</a>
+</section>
+
+<section class="dashboard-summary" aria-label="Case summary">
+  <div class="summary-card">
+    <span>Total cases</span>
+    <strong>{{ stats.total }}</strong>
+  </div>
+  <div class="summary-card">
+    <span>Full analyses</span>
+    <strong>{{ stats.full }}</strong>
+  </div>
+  <div class="summary-card">
+    <span>Static only</span>
+    <strong>{{ stats.static }}</strong>
+  </div>
+  <div class="summary-card">
+    <span>Dynamic only</span>
+    <strong>{{ stats.dynamic }}</strong>
+  </div>
+  <div class="summary-card">
+    <span>Completed cases</span>
+    <strong>{{ stats.completed }}</strong>
+  </div>
+</section>
+
+<section class="case-browser">
+  <div class="case-browser-head">
+    <div>
+      <h2>Case Library</h2>
+      <p class="muted">Search, filter, and open existing analysis results.</p>
+    </div>
+    <span class="case-count" id="caseVisibleCount">{{ stats.total }} visible</span>
+  </div>
+
+  <div class="case-controls" aria-label="Case filters">
+    <label>
+      <span>Search</span>
+      <input id="caseSearch" type="search" placeholder="Case name or ID" autocomplete="off">
+    </label>
+    <label>
+      <span>Mode</span>
+      <select id="modeFilter">
+        <option value="all">All modes</option>
+        <option value="full">Full Analysis</option>
+        <option value="static">Static Only</option>
+        <option value="dynamic">Dynamic Only</option>
+      </select>
+    </label>
+    <label>
+      <span>Status</span>
+      <select id="statusFilter">
+        <option value="all">All statuses</option>
+        <option value="completed">Completed</option>
+        <option value="failed">Failed</option>
+        <option value="active">Running/Queued</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="case-table-wrap">
+    <table class="case-table">
+      <thead>
+        <tr>
+          <th>Case</th>
+          <th>Status</th>
+          <th>Mode</th>
+          <th>Static</th>
+          <th>Dynamic</th>
+          <th>Created</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="caseTableBody">
+      {% for case in cases %}
+        {% set selected = case.get('selected_backends') or {} %}
+        {% set mode = case.get('analysis_mode', 'legacy') %}
+        {% set status = case.get('current_status', 'unknown') %}
+        {% set timestamps = case.get('timestamps') or {} %}
+        {% set static_backend = 'Ghidra' if selected.get('ghidra') else ('Basic static' if selected.get('static') else 'Not selected') %}
+        {% set dynamic_backend = 'CAPE Sandbox' if selected.get('cape') else 'Not selected' %}
+        {% if mode == 'full' %}
+          {% set mode_label = 'Full Analysis' %}
+        {% elif mode == 'static' %}
+          {% set mode_label = 'Static Only' %}
+        {% elif mode == 'dynamic' %}
+          {% set mode_label = 'Dynamic Only' %}
+        {% else %}
+          {% set mode_label = mode %}
+        {% endif %}
+        <tr
+          class="case-row"
+          data-case-text="{{ (case.get('case_name', '') ~ ' ' ~ case.get('case_id', '')) | lower }}"
+          data-mode="{{ mode }}"
+          data-status="{{ status }}"
+        >
+          <td>
+            <strong>{{ case.get('case_name', 'Unnamed case') }}</strong>
+            <code>{{ case.get('case_id', '') }}</code>
+          </td>
+          <td><span class="status-badge status-{{ status }}">{{ status }}</span></td>
+          <td><span class="mode-badge mode-{{ mode }}">{{ mode_label }}</span></td>
+          <td>{{ static_backend }}</td>
+          <td>{{ dynamic_backend }}</td>
+          <td>{{ timestamps.get('created_at', 'Unknown') }}</td>
+          <td><a class="button secondary compact-button" href="/cases/{{ case.case_id }}">Details</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="empty-state hidden" id="caseEmptyState">No cases match the current filters.</p>
+  </div>
+
+  <button class="button secondary show-more-button" id="showMoreCases" type="button">Show more cases</button>
+</section>
+
+<script>
+  (function () {
+    var rows = Array.prototype.slice.call(document.querySelectorAll(".case-row"));
+    var search = document.getElementById("caseSearch");
+    var mode = document.getElementById("modeFilter");
+    var status = document.getElementById("statusFilter");
+    var count = document.getElementById("caseVisibleCount");
+    var empty = document.getElementById("caseEmptyState");
+    var showMore = document.getElementById("showMoreCases");
+    var visibleLimit = 10;
+    var expanded = false;
+
+    function statusGroup(value) {
+      if (value === "completed" || value === "completed_with_warnings") return "completed";
+      if (value === "failed" || value === "completed_with_errors") return "failed";
+      if (value === "running" || value === "queued" || value === "created") return "active";
+      return value;
+    }
+
+    function applyFilters() {
+      var query = (search.value || "").trim().toLowerCase();
+      var modeValue = mode.value;
+      var statusValue = status.value;
+      var matched = rows.filter(function (row) {
+        var textMatch = !query || row.dataset.caseText.indexOf(query) !== -1;
+        var modeMatch = modeValue === "all" || row.dataset.mode === modeValue;
+        var statusMatch = statusValue === "all" || statusGroup(row.dataset.status) === statusValue;
+        return textMatch && modeMatch && statusMatch;
+      });
+
+      rows.forEach(function (row) {
+        row.classList.add("hidden");
+      });
+
+      matched.forEach(function (row, index) {
+        if (expanded || index < visibleLimit) {
+          row.classList.remove("hidden");
+        }
+      });
+
+      count.textContent = matched.length + " visible";
+      empty.classList.toggle("hidden", matched.length > 0);
+      showMore.classList.toggle("hidden", matched.length <= visibleLimit || expanded);
+    }
+
+    [search, mode, status].forEach(function (control) {
+      control.addEventListener("input", function () {
+        expanded = false;
+        applyFilters();
+      });
+      control.addEventListener("change", function () {
+        expanded = false;
+        applyFilters();
+      });
+    });
+
+    showMore.addEventListener("click", function () {
+      expanded = true;
+      applyFilters();
+    });
+
+    applyFilters();
+  })();
+</script>
+{% endblock %}

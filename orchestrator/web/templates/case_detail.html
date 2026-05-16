@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block content %}
+{% set selected = manifest.get('selected_backends') or {} %}
+{% set backend_summary = report.get('backend_summary', {}) if report else {} %}
+{% set summary = report.get('summary', {}) if report else {} %}
+{% set cape = report.get('cape_analysis_summary', {}) if report else {} %}
+{% set runtime = report.get('runtime_evidence_summary', {}) if report else {} %}
+{% set sig = (report.get('signature_scan') if report else None) or signature_scan or {} %}
+{% set sig_engines = sig.get('engines', {}) %}
+{% set yara = sig_engines.get('yara', {}) %}
+{% set clamav = sig_engines.get('clamav', {}) %}
+{% set sig_catalog = sig.get('signature_catalog', {}) %}
+{% set sig_collections = sig_catalog.get('collections', {}) %}
+{% set yara_matches = yara.get('matches', []) %}
+{% set clamav_matches = clamav.get('matches', []) %}
+{% set status = manifest.get('current_status', 'unknown') %}
+{% set signature_verdict = sig.get('verdict', 'not available') %}
+
+<section class="case-hero">
+  <div>
+    <p class="eyebrow">Analysis Case</p>
+    <h1>{{ manifest.case_name }}</h1>
+    <p class="muted case-id"><code>{{ manifest.case_id }}</code></p>
+
+    <div class="case-badges">
+      <span class="status-badge status-{{ status }}">{{ status }}</span>
+      <span class="status-badge">Mode: {{ manifest.analysis_mode }}</span>
+      <span class="status-badge">Static: {{ backend_summary.get('static', 'Ghidra' if selected.get('ghidra') else ('Basic static' if selected.get('static') else 'Not selected')) }}</span>
+      <span class="status-badge">Dynamic: {{ backend_summary.get('dynamic', 'CAPE Sandbox' if selected.get('cape') else 'Not selected') }}</span>
+    </div>
+  </div>
+
+  <nav class="case-actions">
+    <a class="button" href="/cases/{{ manifest.case_id }}/report">View Report</a>
+    <a class="button" href="/cases/{{ manifest.case_id }}/graph">View Graph</a>
+    <a class="button secondary" href="/api/cases/{{ manifest.case_id }}/download/report_json">Download JSON</a>
+    <a class="button secondary" href="/api/cases/{{ manifest.case_id }}/download/report_md">Download Markdown</a>
+  </nav>
+</section>
+
+{% if report %}
+<section class="metric-grid">
+  <div class="metric-card">
+    <span>Artifacts</span>
+    <strong>{{ summary.get('artifact_count', 0) }}</strong>
+    <small>{{ summary.get('stage_artifact_count', 0) }} stage-like</small>
+  </div>
+
+  <div class="metric-card">
+    <span>IOCs</span>
+    <strong>{{ summary.get('ioc_count', 0) }}</strong>
+    <small>{{ summary.get('ioc_type_count', 0) }} IOC categories</small>
+  </div>
+
+  <div class="metric-card">
+    <span>MITRE-style mappings</span>
+    <strong>{{ summary.get('mitre_mapping_count', 0) }}</strong>
+    <small>Evidence-derived behavior labels</small>
+  </div>
+
+  <div class="metric-card">
+    <span>Stage graph</span>
+    <strong>{{ summary.get('graph_node_count', 0) }} / {{ summary.get('graph_edge_count', 0) }}</strong>
+    <small>nodes / edges</small>
+  </div>
+
+  <div class="metric-card">
+    <span>CAPE score</span>
+    <strong>{{ cape.get('score', 'N/A') }}</strong>
+    <small>{{ cape.get('signature_count', 0) }} CAPE signatures</small>
+  </div>
+
+  <div class="metric-card">
+    <span>Signature verdict</span>
+    <strong class="small-strong">{{ signature_verdict }}</strong>
+    <small>{{ sig.get('summary', {}).get('total_match_count', 0) }} local signature matches</small>
+  </div>
+</section>
+
+<section class="case-grid">
+  <div class="panel case-card">
+    <div class="card-title-row">
+      <h2>Local Signature Scan</h2>
+      <span class="mini-pill">{{ signature_verdict }}</span>
+    </div>
+
+    {% if sig %}
+    <div class="evidence-list">
+      <div><span>YARA</span><strong>{{ yara.get('status', 'not available') }}</strong></div>
+      <div><span>YARA available</span><strong>{{ yara.get('available') }}</strong></div>
+      <div><span>YARA rules loaded</span><strong>{{ yara.get('rules_loaded', [])|length }}</strong></div>
+      <div><span>YARA matches</span><strong>{{ yara.get('match_count', yara_matches|length) }}</strong></div>
+      <div><span>ClamAV</span><strong>{{ clamav.get('status', 'not available') }}</strong></div>
+      <div><span>ClamAV available</span><strong>{{ clamav.get('available') }}</strong></div>
+      <div><span>Total matches</span><strong>{{ sig.get('summary', {}).get('total_match_count', 0) }}</strong></div>
+      <div><span>Catalog loaded</span><strong>{{ sig_catalog.get('metadata_loaded', false) }}</strong></div>
+    </div>
+
+    <p class="muted note-box">
+      Generic local YARA rules are heuristic triage signals; they do not confirm malware by themselves.
+      Known-family attribution is only valid for verified rules in the known_families collection.
+      {% if clamav.get('status') == 'unavailable' %}ClamAV was unavailable; that is not evidence the sample is clean.{% endif %}
+    </p>
+
+    {% if sig_collections %}
+    <div class="evidence-list">
+      {% for name, collection in sig_collections.items() %}
+      <div>
+        <span>{{ name }} source</span>
+        <strong>{{ collection.get('quality', 'unknown') }}</strong>
+        <small>{{ collection.get('rule_files', [])|length }} rule files</small>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if yara.get('error') or clamav.get('error') %}
+    <p class="muted note-box">
+      {% if yara.get('error') %}<strong>YARA note:</strong> {{ yara.get('error') }}<br>{% endif %}
+      {% if clamav.get('error') %}<strong>ClamAV note:</strong> {{ clamav.get('error') }}{% endif %}
+    </p>
+    {% endif %}
+
+    {% if yara_matches or clamav_matches %}
+    {% if yara_matches %}
+    <ul class="compact-list">
+      {% for match in yara_matches[:10] %}
+      <li>
+        <code>{{ match.get('rule') }}</code>
+        <span class="muted">collection {{ match.get('collection', 'unknown') }}, quality {{ match.get('quality', 'unknown') }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <details>
+      <summary>View signature matches</summary>
+      <pre>{{ {'yara': yara_matches, 'clamav': clamav_matches} | tojson(indent=2) }}</pre>
+    </details>
+    {% endif %}
+    {% else %}
+    <p class="muted">No signature scan result was found for this case.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel case-card">
+    <div class="card-title-row">
+      <h2>CAPE Sandbox</h2>
+      <span class="mini-pill">{{ cape.get('status', 'not selected') }}</span>
+    </div>
+
+    <div class="evidence-list">
+      <div><span>Status</span><strong>{{ cape.get('status') }}</strong></div>
+      <div><span>Task ID</span><strong>{{ cape.get('task_id') }}</strong></div>
+      <div><span>Mode</span><strong>{{ cape.get('mode') }}</strong></div>
+      <div><span>Score</span><strong>{{ cape.get('score') }}</strong></div>
+      <div><span>Signatures</span><strong>{{ cape.get('signature_count') }}</strong></div>
+      <div><span>Dropped artifacts copied</span><strong>{{ cape.get('dropped_artifact_count') }}</strong></div>
+    </div>
+
+    {% if cape.get('reason') %}
+    <p class="muted note-box"><strong>Reason:</strong> {{ cape.get('reason') }}</p>
+    {% endif %}
+  </div>
+
+  <div class="panel case-card">
+    <h2>Runtime Evidence</h2>
+    <div class="evidence-list">
+      <div><span>API hit markers</span><strong>{{ runtime.get('marker_count', 0) }}</strong></div>
+      <div><span>Dropped stage artifacts</span><strong>{{ runtime.get('dropped_stage_artifact_count', 0) }}</strong></div>
+      <div><span>Graph nodes</span><strong>{{ summary.get('graph_node_count', 0) }}</strong></div>
+      <div><span>Graph edges</span><strong>{{ summary.get('graph_edge_count', 0) }}</strong></div>
+    </div>
+    <p class="muted">
+      Runtime evidence is imported from CAPE reports and copied artifacts. The graph page shows stage relationships.
+    </p>
+  </div>
+
+  <div class="panel case-card">
+    <h2>Future Reverse-Engineering Extension</h2>
+    <p>
+      Debugger-assisted reverse engineering is documented as a future enhancement for precise transition-point validation,
+      API argument inspection, and memory-buffer dumping during unpacking/decryption moments.
+    </p>
+    <p class="muted">
+      It is not part of the current active automated pipeline.
+    </p>
+  </div>
+</section>
+
+
+{% if timing %}
+<section class="panel">
+  <div class="card-title-row">
+    <h2>Runtime Timing</h2>
+    <span class="mini-pill">{{ timing.get('status', 'recorded') }}</span>
+  </div>
+
+  <div class="evidence-list">
+    <div><span>Total duration</span><strong>{{ timing.get('duration_seconds', '-') }} seconds</strong></div>
+    <div><span>Started</span><strong>{{ timing.get('started_at', '-') }}</strong></div>
+    <div><span>Finished</span><strong>{{ timing.get('finished_at', '-') }}</strong></div>
+  </div>
+
+	  {% if timing.get('steps') %}
+	  {% set cape_phase_names = ["cape_submission", "cape_sandbox_wait", "cape_import", "cape_artifact_copy", "cape_total"] %}
+	  {% set cape_phase_steps = [] %}
+	  {% for name in cape_phase_names %}
+	    {% if timing.get('steps', {}).get(name) %}
+	      {% set _ = cape_phase_steps.append(name) %}
+	    {% endif %}
+	  {% endfor %}
+	  {% if cape_phase_steps %}
+	  <h3>CAPE phase durations</h3>
+	  <p class="muted">CAPE phases are timed at existing safe orchestration boundaries.</p>
+	  <div class="evidence-list">
+	    {% for name in cape_phase_steps %}
+	    {% set item = timing.get('steps', {}).get(name, {}) %}
+	    <div>
+	      <span>{{ name }}</span>
+	      <strong>{{ item.get('duration_seconds', '-') }} seconds — {{ item.get('status', '-') }}</strong>
+	    </div>
+	    {% endfor %}
+	  </div>
+	  {% endif %}
+	  <h3>Step durations</h3>
+	  <div class="evidence-list">
+    {% for name, item in timing.get('steps', {}).items() %}
+    <div>
+      <span>{{ name }}</span>
+      <strong>{{ item.get('duration_seconds', '-') }} seconds — {{ item.get('status', '-') }}</strong>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="card-title-row">
+    <h2>Pipeline Steps</h2>
+    <span class="mini-pill">{{ status }}</span>
+  </div>
+
+  <div class="step-columns">
+    <div>
+      <h3>Completed</h3>
+      <ul class="compact-list">
+        {% for s in manifest.completed_steps %}
+        <li>{{ s }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    {% if manifest.failed_steps %}
+    <div>
+      <h3>Failed</h3>
+      <ul class="compact-list danger-list">
+        {% for s in manifest.failed_steps %}
+        <li>{{ s }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="case-grid">
+  <div class="panel">
+    <h2>IOC Summary</h2>
+    {% if report.iocs %}
+    <div class="ioc-cloud">
+      {% for key, values in report.iocs.items() %}
+      <span>{{ key }} <strong>{{ values|length }}</strong></span>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No IOCs were extracted.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>MITRE-Style Mapping</h2>
+    {% if report.mitre_style_mapping %}
+    <ul class="compact-list">
+      {% for item in report.mitre_style_mapping[:20] %}
+      <li><code>{{ item.source_api }}</code> — {{ item.label }}</li>
+      {% endfor %}
+    </ul>
+    {% if report.mitre_style_mapping|length > 20 %}
+    <p class="muted">Showing first 20 of {{ report.mitre_style_mapping|length }} mappings. Full list is available in the report.</p>
+    {% endif %}
+    {% else %}
+    <p class="muted">No behavior mappings were produced.</p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if manifest.warnings %}
+<section class="panel warning-panel">
+  <h2>Warnings</h2>
+  <pre>{{ manifest.warnings | tojson(indent=2) }}</pre>
+</section>
+{% endif %}
+
+{% if manifest.errors %}
+<section class="panel error-panel">
+  <h2>Errors</h2>
+  <pre>{{ manifest.errors | tojson(indent=2) }}</pre>
+</section>
+{% endif %}
+{% endblock %}

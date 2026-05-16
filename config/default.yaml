@@ -1,0 +1,120 @@
+# Defensive academic malware-analysis orchestrator defaults.
+# Real malware mode and live Windows execution are disabled by default.
+
+results_root: results/cases
+ghidra_headless_path: /opt/ghidra/support/analyzeHeadless
+ghidra_script_dir: ghidra_scripts
+ghidra_timeout_seconds: 300
+x64dbg_path: C:\Tools\x64dbg_new\release\x64\x64dbg.exe
+windows_ssh_host: malproj-win10
+windows_runtime_base: C:\malproj_runtime
+analysis_timeout_seconds: 60
+max_recursion_depth: 2
+fake_sample_mode: false
+real_malware_mode: false
+run_ghidra: true
+run_windows_dynamic: false
+use_fake_fixture_static: false
+use_fake_fixture_dynamic: false
+artifact_collection_paths:
+  - C:\malproj_runtime\logs
+  - C:\malproj_runtime\output
+  - C:\malproj_runtime\drops
+  - C:\malproj_runtime
+
+cape:
+  enabled: false
+  mode: api
+  api_base_url: http://127.0.0.1:8000
+  api_token: null
+  install_path: /opt/CAPEv2
+  storage_path: /opt/CAPEv2/storage/analyses
+  timeout_seconds: 900
+  poll_interval_seconds: 10
+  collect_dropped_files: true
+  collect_reports: true
+  submit_sample: false
+  import_latest_matching_report: true
+  machine: win10
+  analysis_timeout_seconds: 120
+  options: ""
+
+vm:
+  enabled: false
+  provider: kvm
+  machinery: kvm
+  name: win10
+  auto_start: true
+  wait_for_ssh_seconds: 180
+  ssh_host: malproj-win10
+  ssh_user: kareem
+  runtime_base: C:\malproj_runtime
+  x64dbg_path: C:\Tools\x64dbg_new\release\x64\x64dbg.exe
+  restore_snapshot_before_run: false
+  snapshot_name: x64dbg_ready
+  shutdown_after_run: false
+
+web:
+  host: 127.0.0.1
+  port: 8088
+  upload_dir: results/uploads
+
+# Web/API defensive hardening.
+web_upload_max_bytes: 104857600
+web_allowed_upload_extensions:
+  - ".exe"
+  - ".dll"
+  - ".bin"
+  - ".dat"
+  - ".scr"
+  - ".ps1"
+  - ".vbs"
+  - ".js"
+  - ".zip"
+web_job_max_concurrent: 2
+web_rate_limit_enabled: true
+web_rate_limit_window_seconds: 60
+web_rate_limit_max_requests: 30
+web_secret_redaction_enabled: true
+
+
+# Recursive analysis policy.
+# Static recursion is safe because it does not execute child artifacts.
+recursive_static_analysis_enabled: true
+recursive_static_timeout_seconds: 300
+
+# Dynamic recursive child detonation is intentionally disabled by default.
+# It should only be enabled later with explicit safeguards and max-depth limits.
+recursive_dynamic_analysis_enabled: false
+
+# Signature scanning for known malware.
+# These are real scanners only. Missing engines are reported as unavailable.
+signature_scan_enabled: true
+signature_scan_timeout_seconds: 120
+yara_binary: yara
+clamscan_binary: clamscan
+signature_rules_dirs:
+  - signatures/yara
+signature_rule_files: []
+
+# Test fixtures are disabled in normal production runs.
+allow_test_fixtures: false
+
+
+# External reputation providers.
+# API keys should come from environment variables, not from committed config.
+virustotal:
+  enabled: true
+  api_key: null
+  base_url: https://www.virustotal.com/api/v3
+  timeout_seconds: 30
+
+
+malwarebazaar:
+  enabled: true
+  api_key: null
+  api_url: https://mb-api.abuse.ch/api/v1/
+  timeout_seconds: 30
+
+# Maximum high-value artifacts shown in the main stage graph.
+max_graph_artifacts: 12

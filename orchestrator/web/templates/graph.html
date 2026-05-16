@@ -1,0 +1,526 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Stage Graph</h1>
+<p><a href="/cases/{{ case_id }}">Back to case</a></p>
+
+<section class="grid">
+  <div class="panel">
+    <h2>Graph Summary</h2>
+    <ul>
+      <li>Graph nodes: <strong>{{ graph.nodes|length }}</strong></li>
+      <li>Graph edges: <strong>{{ graph.edges|length }}</strong></li>
+      <li>Artifacts collected: <strong>{{ report_summary.get('artifact_count', 0) }}</strong></li>
+      <li>Stage-like artifacts: <strong>{{ report_summary.get('stage_artifact_count', 0) }}</strong></li>
+      <li>Unique case IOCs: <strong>{{ report_summary.get('ioc_count', 0) }}</strong></li>
+      <li>Case MITRE mappings: <strong>{{ report_summary.get('mitre_mapping_count', 0) }}</strong></li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Backends</h2>
+    <ul>
+      <li>Static: <strong>{{ backend_summary.get('static', 'Not available') }}</strong></li>
+      <li>Dynamic: <strong>{{ backend_summary.get('dynamic', 'Not available') }}</strong></li>
+    </ul>
+    <p class="muted">
+      Unique case-level IOCs and MITRE mappings are shown in the summary, while node cards show raw node-level references,
+      individual CAPE artifact nodes may not have separate IOC enrichment yet.
+    </p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 id="main-graph-title">Stage Timeline</h2>
+  <p class="muted" id="main-graph-subtitle">
+    Loading graph interpretation...
+  </p>
+
+  <div id="graph-main-content"></div>
+</section>
+
+<section class="panel">
+  <h2>Selected Node Details</h2>
+  <div id="node-detail-content" class="muted">
+    Select a node card to inspect its details.
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Observed Relationships</h2>
+  {% if graph.edges %}
+  <table class="edge-table">
+    <thead>
+      <tr>
+        <th>Parent</th>
+        <th>Child</th>
+        <th>Observed event</th>
+        <th>Evidence source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for edge in graph.edges %}
+      <tr>
+        <td><code>{{ edge.parent_stage }}</code></td>
+        <td><code>{{ edge.child_stage }}</code></td>
+        <td>{{ edge.observed_api_or_event }}</td>
+        <td>{{ edge.evidence_source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">
+    No runtime relationships were recorded for this case.
+    This is expected for Static Only analysis or when no stage artifacts were observed.
+  </p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Developer View</h2>
+  <p class="muted">DOT and Markdown are kept for debugging, export, and documentation.</p>
+
+  <details>
+    <summary>DOT</summary>
+    <pre>{{ graph_dot }}</pre>
+  </details>
+
+  <details>
+    <summary>Markdown</summary>
+    <pre>{{ graph_md }}</pre>
+  </details>
+</section>
+
+<style>
+.timeline-wrap {
+  margin-top: 1rem;
+}
+
+.timeline-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.timeline-rail {
+  position: relative;
+}
+
+.timeline-dot {
+  position: relative;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  margin: 1.1rem auto 0;
+  background: #2563eb;
+  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.14);
+}
+
+.timeline-dot.artifact {
+  background: #f97316;
+  box-shadow: 0 0 0 5px rgba(249, 115, 22, 0.14);
+}
+
+.timeline-line {
+  position: absolute;
+  left: 50%;
+  top: 2.1rem;
+  bottom: -1.2rem;
+  width: 2px;
+  background: #cbd5e1;
+  transform: translateX(-50%);
+}
+
+.timeline-stage:last-child .timeline-line {
+  display: none;
+}
+
+.stage-card {
+  border: 1px solid #d7dee8;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  padding: 1rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.stage-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+}
+
+.stage-card.selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 14px 28px rgba(15, 23, 42, 0.14);
+}
+
+.stage-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.7rem;
+}
+
+.stage-title {
+  font-weight: 800;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.stage-subtitle {
+  color: #475569;
+  font-size: 0.92rem;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.stage-badge {
+  white-space: nowrap;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: #eaf1ff;
+  color: #1d4ed8;
+  font-size: 0.78rem;
+}
+
+.stage-badge.artifact {
+  background: #fff1e8;
+  color: #c2410c;
+}
+
+.stage-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 0.55rem;
+  margin: 0.7rem 0;
+}
+
+.metric-chip {
+  border-radius: 0.8rem;
+  background: #eef4ff;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.84rem;
+}
+
+.metric-chip.warning {
+  background: #fff7ed;
+}
+
+.metric-chip strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.hash-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.empty-state {
+  border: 1px dashed #cbd5e1;
+  border-radius: 1rem;
+  background: #f8fafc;
+  padding: 1.2rem;
+}
+
+.empty-state h3 {
+  margin-top: 0;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.detail-table th {
+  text-align: left;
+  color: #475569;
+  width: 170px;
+  padding: 0.4rem 0.6rem 0.4rem 0;
+  vertical-align: top;
+}
+
+.detail-table td {
+  padding: 0.4rem 0;
+  overflow-wrap: anywhere;
+}
+
+.edge-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.edge-table th,
+.edge-table td {
+  text-align: left;
+  padding: 0.55rem;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+
+@media (max-width: 900px) {
+  .stage-metrics {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+}
+</style>
+
+<script>
+const graphData = {{ graph | tojson }};
+const reportSummary = {{ report_summary | tojson }};
+const detail = document.getElementById("node-detail-content");
+const content = document.getElementById("graph-main-content");
+const titleEl = document.getElementById("main-graph-title");
+const subtitleEl = document.getElementById("main-graph-subtitle");
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function shortHash(value) {
+  if (!value) return "-";
+  return value.length > 28 ? `${value.slice(0, 16)}…${value.slice(-8)}` : value;
+}
+
+function nodeKind(node) {
+  if (node.stage_id === "root" || node.file_type === "input_sample") return "root";
+  return "artifact";
+}
+
+function prettyStageId(stageId) {
+  if (stageId === "root") return "Root Sample";
+  const match = String(stageId || "").match(/(?:cape_)?artifact_(\d+)/);
+  if (match) return `Artifact ${match[1]}`;
+  return String(stageId || "Stage");
+}
+
+function iocCount(node) {
+  const iocs = node.iocs || {};
+  return Object.values(iocs).reduce((total, values) => {
+    return total + (Array.isArray(values) ? values.length : 0);
+  }, 0);
+}
+
+function mitreCount(node) {
+  return Array.isArray(node.mitre_techniques) ? node.mitre_techniques.length : 0;
+}
+
+function enrichmentLabel(node) {
+  const kind = nodeKind(node);
+  const iocs = iocCount(node);
+  const mitre = mitreCount(node);
+
+  if (kind === "root") {
+    return "Root evidence enriched";
+  }
+
+  if (iocs === 0 && mitre === 0) {
+    return "Not enriched";
+  }
+
+  return "Node enriched";
+}
+
+function showNodeDetails(node) {
+  const nodeIocs = iocCount(node);
+  const nodeMitre = mitreCount(node);
+  const path = node.file_path || node.case_path || "-";
+  const enrichment = enrichmentLabel(node);
+
+  detail.innerHTML = `
+    <table class="detail-table">
+      <tr><th>Stage</th><td><code>${escapeHtml(node.stage_id)}</code></td></tr>
+      <tr><th>Display label</th><td>${escapeHtml(prettyStageId(node.stage_id))}</td></tr>
+      <tr><th>Name</th><td>${escapeHtml(node.name || "-")}</td></tr>
+      <tr><th>Type</th><td>${escapeHtml(node.file_type || "-")}</td></tr>
+      <tr><th>Backend</th><td>${escapeHtml(node.source_backend || "-")}</td></tr>
+      <tr><th>SHA-256</th><td><code>${escapeHtml(node.sha256 || "-")}</code></td></tr>
+      <tr><th>Size</th><td>${escapeHtml(node.size || "-")}</td></tr>
+      <tr><th>Node IOC refs</th><td>${nodeIocs}</td></tr>
+      <tr><th>Node MITRE refs</th><td>${nodeMitre}</td></tr>
+      <tr><th>Per-artifact enrichment</th><td>${escapeHtml(enrichment)}</td></tr>
+      <tr><th>Path</th><td><code>${escapeHtml(path)}</code></td></tr>
+    </table>
+  `;
+
+  document.querySelectorAll(".stage-card").forEach(el => el.classList.remove("selected"));
+  const selected = document.querySelector(`[data-stage-id="${CSS.escape(node.stage_id)}"]`);
+  if (selected) selected.classList.add("selected");
+}
+
+function buildNodeMap(nodes) {
+  return new Map(nodes.map(n => [n.stage_id, n]));
+}
+
+function linearizeGraph(nodes, edges) {
+  const byId = buildNodeMap(nodes);
+  if (!nodes.length) return [];
+
+  const children = new Map();
+
+  edges.forEach(edge => {
+    if (!children.has(edge.parent_stage)) children.set(edge.parent_stage, []);
+    children.get(edge.parent_stage).push(edge.child_stage);
+  });
+
+  const ordered = [];
+  const seen = new Set();
+
+  function visit(stageId) {
+    if (seen.has(stageId) || !byId.has(stageId)) return;
+    seen.add(stageId);
+    ordered.push(byId.get(stageId));
+    for (const child of children.get(stageId) || []) {
+      visit(child);
+    }
+  }
+
+  if (byId.has("root")) visit("root");
+
+  nodes
+    .filter(n => !seen.has(n.stage_id))
+    .forEach(n => visit(n.stage_id));
+
+  return ordered;
+}
+
+function cardHtml(node, index, total) {
+  const kind = nodeKind(node);
+  const nodeIocs = iocCount(node);
+  const nodeMitre = mitreCount(node);
+  const enrichment = enrichmentLabel(node);
+  const isArtifactWithoutEnrichment = kind !== "root" && nodeIocs === 0 && nodeMitre === 0;
+
+  return `
+    <div class="timeline-stage">
+      <div class="timeline-rail">
+        <div class="timeline-dot ${kind === "artifact" ? "artifact" : ""}"></div>
+        <div class="timeline-line"></div>
+      </div>
+
+      <div class="stage-card ${kind}" data-stage-id="${escapeHtml(node.stage_id)}">
+        <div class="stage-head">
+          <div>
+            <div class="stage-title">${escapeHtml(prettyStageId(node.stage_id))}</div>
+            <div class="stage-subtitle">${escapeHtml(node.name || "-")}</div>
+          </div>
+          <div class="stage-badge ${kind === "artifact" ? "artifact" : ""}">
+            ${kind === "root" ? "input sample" : "CAPE artifact"}
+          </div>
+        </div>
+
+        <div class="stage-metrics">
+          <div class="metric-chip">
+            <span>Backend</span>
+            <strong>${escapeHtml(node.source_backend || "-")}</strong>
+          </div>
+          <div class="metric-chip">
+            <span>Size</span>
+            <strong>${escapeHtml(node.size || "-")}</strong>
+          </div>
+          <div class="metric-chip">
+            <span>Node IOC refs</span>
+            <strong>${nodeIocs}</strong>
+          </div>
+          <div class="metric-chip">
+            <span>Node MITRE refs</span>
+            <strong>${nodeMitre}</strong>
+          </div>
+          <div class="metric-chip ${isArtifactWithoutEnrichment ? "warning" : ""}">
+            <span>Enrichment</span>
+            <strong>${escapeHtml(enrichment)}</strong>
+          </div>
+        </div>
+
+        <div class="hash-line">SHA-256: ${escapeHtml(shortHash(node.sha256))}</div>
+      </div>
+    </div>
+  `;
+}
+
+function attachCardEvents(nodes) {
+  const byId = buildNodeMap(nodes);
+  document.querySelectorAll(".stage-card").forEach(el => {
+    el.addEventListener("click", () => {
+      const node = byId.get(el.dataset.stageId);
+      if (node) showNodeDetails(node);
+    });
+  });
+}
+
+function renderStaticState(nodes) {
+  const root = nodes[0];
+  titleEl.textContent = "Evidence Graph";
+  subtitleEl.textContent = "Static analysis did not produce a runtime stage chain. This is expected when the sample is not executed.";
+
+  content.innerHTML = `
+    <div class="empty-state">
+      <h3>No runtime stage chain available</h3>
+      <p class="muted">
+        This case contains only the original input sample node.
+        Case-level IOCs and MITRE mappings are still shown in the summary above and in the root node details.
+      </p>
+      <div class="timeline-wrap">
+        ${cardHtml(root)}
+      </div>
+    </div>
+  `;
+
+  attachCardEvents(nodes);
+  if (root) showNodeDetails(root);
+}
+
+function renderTimeline(nodes, edges) {
+  titleEl.textContent = "Stage Timeline";
+  subtitleEl.textContent =
+    "This timeline shows the root sample and CAPE-observed artifacts. Per-artifact enrichment is shown separately from case-level IOCs.";
+
+  const ordered = linearizeGraph(nodes, edges);
+  const html = ordered.map((node, index) => cardHtml(node, index, ordered.length)).join("");
+
+  content.innerHTML = `<div class="timeline-wrap">${html}</div>`;
+
+  attachCardEvents(nodes);
+  if (ordered[0]) showNodeDetails(ordered[0]);
+}
+
+function renderGraph() {
+  const nodes = graphData.nodes || [];
+  const edges = graphData.edges || [];
+
+  if (!nodes.length) {
+    titleEl.textContent = "No Graph Data";
+    subtitleEl.textContent = "The stage graph file did not contain any nodes.";
+    content.innerHTML = `
+      <div class="empty-state">
+        <h3>No graph nodes available</h3>
+        <p class="muted">No stage graph could be displayed for this case.</p>
+      </div>
+    `;
+    detail.textContent = "No node details available.";
+    return;
+  }
+
+  if (nodes.length <= 1 || edges.length === 0) {
+    renderStaticState(nodes);
+  } else {
+    renderTimeline(nodes, edges);
+  }
+}
+
+renderGraph();
+</script>
+{% endblock %}

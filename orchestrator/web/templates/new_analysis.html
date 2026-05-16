@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New Analysis</h1>
+
+<section class="panel">
+  <h2>Environment</h2>
+  <ul>
+    <li>Ghidra configured: {{ config_status.ghidra.configured }}</li>
+    <li>CAPE sandbox ready: {{ config_status.cape.submission_available }}</li>
+    <li>CAPE VM: {{ config_status.cape.vm_name }}</li>
+    <li>Real malware mode: {{ config_status.real_malware_mode }}</li>
+    <li>Recommended: {{ config_status.recommended_next_action }}</li>
+  </ul>
+  <p class="muted">
+    Current implemented pipeline: Ghidra for static analysis and CAPE Sandbox for safe dynamic execution.
+    x64dbg is documented as a future debugger-assisted reverse-engineering enhancement.
+  </p>
+  <p class="muted">
+    Developer diagnostics: <a href="/system-status">open environment readiness page</a>
+  </p>
+</section>
+
+<form class="panel" id="analysis-form" autocomplete="off">
+  <label>Case name <input name="case_name" placeholder="Optional; auto-filled from filename"></label>
+  <label>Upload sample <input type="file" name="sample"></label>
+  <label>Or sample path <input name="sample_path" placeholder="/path/to/sample.exe"></label>
+
+  <label>Analysis mode
+    <select name="analysis_mode" id="analysis-mode">
+      <option value="full" {% if default_mode == "full" %}selected{% endif %}>Full Analysis — Ghidra + CAPE</option>
+      <option value="static" {% if default_mode == "static" %}selected{% endif %}>Static Only — Ghidra/static analysis, no execution</option>
+      <option value="dynamic" {% if default_mode == "dynamic" %}selected{% endif %}>Dynamic Only — CAPE sandbox execution</option>
+    </select>
+  </label>
+
+  <button type="submit" id="analyze-button">Analyze</button>
+</form>
+
+<section class="panel" id="progress-panel" hidden>
+  <div class="progress-header">
+    <div>
+      <h2 id="progress-title">Analysis queued</h2>
+      <p class="muted" id="progress-subtitle">Preparing the analysis job...</p>
+    </div>
+    <span class="pill" id="status-pill">queued</span>
+  </div>
+
+  <div class="progress-grid">
+    <div>
+      <h3>Run Details</h3>
+      <table class="mini-table">
+        <tr><th>Case</th><td id="detail-case">-</td></tr>
+        <tr><th>Mode</th><td id="detail-mode">-</td></tr>
+        <tr><th>Current step</th><td id="detail-step">-</td></tr>
+        <tr><th>Elapsed time</th><td id="detail-elapsed">-</td></tr>
+        <tr><th>CAPE task</th><td id="detail-cape-task">-</td></tr>
+        <tr><th>CAPE status</th><td id="detail-cape-status">-</td></tr>
+      </table>
+    </div>
+
+    <div>
+      <h3>Pipeline Progress</h3>
+      <ol class="timeline" id="progress-steps"></ol>
+    </div>
+  </div>
+
+  <details class="debug-details">
+    <summary>Developer details</summary>
+    <pre id="job-output"></pre>
+  </details>
+</section>
+
+<style>
+.progress-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.progress-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.4fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mini-table th {
+  text-align: left;
+  width: 140px;
+  color: #475569;
+  padding: 0.35rem 0.5rem 0.35rem 0;
+}
+
+.mini-table td {
+  padding: 0.35rem 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.timeline li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.timeline .icon {
+  width: 1.35rem;
+  text-align: center;
+  font-weight: bold;
+}
+
+.timeline .done .icon {
+  color: #16a34a;
+}
+
+.timeline .active .icon {
+  color: #2563eb;
+}
+
+.timeline .pending .icon {
+  color: #94a3b8;
+}
+
+.timeline .failed .icon {
+  color: #dc2626;
+}
+
+.timeline .label {
+  font-weight: 600;
+}
+
+.timeline .hint {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.debug-details {
+  margin-top: 1rem;
+}
+
+.debug-details pre {
+  max-height: 220px;
+  overflow: auto;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+@media (max-width: 800px) {
+  .progress-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<script>
+let localJobStartMs = null;
+
+const STEP_SETS = {
+  full: [
+    ["queued", "Queued", "The analysis job was accepted."],
+    ["running_signature_scan", "Known-malware signature scan", "Checking local YARA/ClamAV signature sources without executing the sample."],
+    ["running_static", "Ghidra static analysis", "Extracting imports, strings, functions, sections, and stage candidates."],
+    ["submitting_to_cape", "Submit to CAPE", "Sending the sample to the CAPE sandbox."],
+    ["waiting_for_cape", "CAPE sandbox execution", "Waiting for the isolated Windows VM analysis to finish."],
+    ["importing_cape_report", "Import CAPE results", "Collecting CAPE report, artifacts, signatures, and behavior summary."],
+    ["collecting_artifacts", "Artifact extraction", "Copying dropped files, logs, dumps, and stage-like artifacts."],
+    ["building_graph", "Stage graph generation", "Building the stage dependency graph."],
+    ["generating_report", "Report generation", "Writing JSON and Markdown reports."],
+    ["completed", "Completed", "Analysis finished successfully."]
+  ],
+  static: [
+    ["queued", "Queued", "The analysis job was accepted."],
+    ["running_signature_scan", "Known-malware signature scan", "Checking local YARA/ClamAV signature sources without executing the sample."],
+    ["running_static", "Ghidra static analysis", "Extracting imports, strings, functions, sections, and stage candidates."],
+    ["building_graph", "Graph generation", "Building a static evidence graph."],
+    ["generating_report", "Report generation", "Writing JSON and Markdown reports."],
+    ["completed", "Completed", "Static analysis finished successfully."]
+  ],
+  dynamic: [
+    ["queued", "Queued", "The analysis job was accepted."],
+    ["running_signature_scan", "Known-malware signature scan", "Checking local YARA/ClamAV signature sources without executing the sample."],
+    ["submitting_to_cape", "Submit to CAPE", "Sending the sample to the CAPE sandbox."],
+    ["waiting_for_cape", "CAPE sandbox execution", "Waiting for the isolated Windows VM analysis to finish."],
+    ["importing_cape_report", "Import CAPE results", "Collecting CAPE report, artifacts, signatures, and behavior summary."],
+    ["collecting_artifacts", "Artifact extraction", "Copying dropped files, logs, dumps, and stage-like artifacts."],
+    ["building_graph", "Stage graph generation", "Building the stage dependency graph."],
+    ["generating_report", "Report generation", "Writing JSON and Markdown reports."],
+    ["completed", "Completed", "Dynamic analysis finished successfully."]
+  ]
+};
+
+const PROGRESS_ALIASES = {
+  queued: "queued",
+  running: "queued",
+  running_signature_scan: "running_signature_scan",
+  running_static: "running_static",
+  running_cape_dynamic: "submitting_to_cape",
+  submitting_to_cape: "submitting_to_cape",
+  cape_task_created: "waiting_for_cape",
+  waiting_for_cape: "waiting_for_cape",
+  importing_cape_report: "importing_cape_report",
+  collecting_artifacts: "collecting_artifacts",
+  building_graph: "building_graph",
+  generating_report: "generating_report",
+  completed: "completed",
+  failed: "failed"
+};
+
+
+function formatElapsed(seconds) {
+  const value = Number(seconds || 0);
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  if (value < 60) return `${value.toFixed(1)}s`;
+  const minutes = Math.floor(value / 60);
+  const secs = Math.floor(value % 60);
+  return `${minutes}m ${secs}s`;
+}
+
+
+function effectiveElapsedSeconds(job) {
+  const serverValue = Number(job.elapsed_seconds || 0);
+  if (Number.isFinite(serverValue) && serverValue > 0) {
+    return serverValue;
+  }
+
+  if (localJobStartMs) {
+    return Math.max(0.1, (Date.now() - localJobStartMs) / 1000);
+  }
+
+  return 0;
+}
+
+function friendlyStep(progress) {
+  const map = {
+    queued: "Queued",
+    running_signature_scan: "Running known-malware signature scan",
+    running_static: "Running Ghidra static analysis",
+    submitting_to_cape: "Submitting sample to CAPE",
+    waiting_for_cape: "Waiting for CAPE sandbox results",
+    importing_cape_report: "Importing CAPE report and artifacts",
+    collecting_artifacts: "Collecting artifacts",
+    building_graph: "Building stage graph",
+    generating_report: "Generating final report",
+    completed: "Completed",
+    failed: "Failed"
+  };
+  return map[progress] || progress || "-";
+}
+
+function renderSteps(mode, progress, status) {
+  const steps = STEP_SETS[mode] || STEP_SETS.full;
+  const normalized = PROGRESS_ALIASES[progress] || progress || "queued";
+  const activeIndex = Math.max(0, steps.findIndex(([key]) => key === normalized));
+  const failed = status === "failed";
+  const list = document.getElementById("progress-steps");
+
+  list.innerHTML = "";
+
+  steps.forEach(([key, label, hint], index) => {
+    const li = document.createElement("li");
+
+    let state = "pending";
+    let icon = "○";
+
+    if (failed && index === activeIndex) {
+      state = "failed";
+      icon = "✕";
+    } else if (index < activeIndex || normalized === "completed") {
+      state = "done";
+      icon = "✓";
+    } else if (index === activeIndex) {
+      state = "active";
+      icon = "⟳";
+    }
+
+    li.className = state;
+    li.innerHTML = `
+      <span class="icon">${icon}</span>
+      <span>
+        <div class="label">${label}</div>
+        <div class="hint">${hint}</div>
+      </span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function updateProgress(job, mode) {
+  const status = job.status || "queued";
+  const progress = job.progress || status;
+  const details = job.details || {};
+  document.getElementById("progress-panel").hidden = false;
+  document.getElementById("status-pill").textContent = status;
+  document.getElementById("progress-title").textContent =
+    status === "completed" ? "Analysis completed" :
+    status === "failed" ? "Analysis failed" :
+    "Analysis running";
+
+  document.getElementById("progress-subtitle").textContent =
+    status === "completed" ? "The report, artifacts, and graph are ready." :
+    status === "failed" ? "The job failed. Check developer details or logs." :
+    "The orchestrator is running the selected analysis pipeline.";
+
+  document.getElementById("detail-case").textContent = job.case_name || "-";
+  document.getElementById("detail-mode").textContent = mode;
+  document.getElementById("detail-step").textContent = friendlyStep(progress);
+  document.getElementById("detail-elapsed").textContent = formatElapsed(effectiveElapsedSeconds(job));
+  document.getElementById("detail-cape-task").textContent = job.cape_task_id || details.task_id || "-";
+  document.getElementById("detail-cape-status").textContent = job.cape_status || details.cape_status || "-";
+
+  document.getElementById("job-output").textContent = JSON.stringify(job, null, 2);
+  renderSteps(mode, progress, status);
+}
+
+document.getElementById("analysis-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const form = event.target;
+  const mode = document.getElementById("analysis-mode").value;
+  const data = new FormData(form);
+  const button = document.getElementById("analyze-button");
+
+  button.disabled = true;
+  button.textContent = "Running...";
+  localJobStartMs = Date.now();
+    updateProgress({status: "queued", progress: "queued", case_name: data.get("case_name")}, mode);
+
+  try {
+    const response = await fetch("/api/analyze", {method: "POST", body: data});
+    const job = await response.json();
+
+    if (!response.ok) {
+      throw new Error(job.detail || "Failed to start analysis.");
+    }
+
+    updateProgress(job, mode);
+
+    const timer = setInterval(async () => {
+      const status = await (await fetch(`/api/jobs/${job.job_id}`)).json();
+      updateProgress(status, mode);
+
+      if (status.status === "completed" && status.case_id) {
+        clearInterval(timer);
+        button.disabled = false;
+        button.textContent = "Analyze";
+        window.location.href = `/cases/${status.case_id}`;
+      }
+
+      if (status.status === "failed") {
+        clearInterval(timer);
+        button.disabled = false;
+        button.textContent = "Analyze";
+      }
+    }, 1500);
+  } catch (err) {
+    updateProgress({status: "failed", progress: "failed", case_name: data.get("case_name"), error: String(err)}, mode);
+    button.disabled = false;
+    button.textContent = "Analyze";
+  }
+});
+</script>
+{% endblock %}

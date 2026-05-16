@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="ti-console">
+  <div class="ti-top">
+    <p class="eyebrow">StageHawk Intelligence</p>
+    <h1>Threat Intelligence Workspace</h1>
+    <p class="muted">
+      Correlate hashes and URLs using configured intelligence providers. StageHawk does not execute files, browse URLs, or download remote content here.
+    </p>
+  </div>
+
+  <div class="ti-tabs" role="tablist">
+    <button class="ti-tab active" data-mode="hash" type="button">
+      <span>HASH</span>
+      <small>File reputation</small>
+    </button>
+    <button class="ti-tab" data-mode="url" type="button">
+      <span>URL</span>
+      <small>Link reputation</small>
+    </button>
+  </div>
+
+  <div class="ti-search-card">
+    <div class="ti-mode-copy">
+      <p class="eyebrow" id="modeEyebrow">Hash Lookup</p>
+      <h2 id="modeTitle">Check a file hash</h2>
+      <p class="muted" id="modeHint">
+        Paste an MD5, SHA1, or SHA256 hash to compare external intelligence from configured providers.
+      </p>
+    </div>
+
+    <div class="ti-search-row">
+      <input id="intelValue" class="ti-search-input" type="text"
+             placeholder="094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d">
+      <button class="ti-search-button" id="lookupBtn" type="button">Lookup</button>
+    </div>
+
+    <div class="ti-under-row">
+      <span id="providerHint">Providers: VirusTotal and MalwareBazaar.</span>
+      <button id="clearBtn" type="button" class="ti-clear-button">Clear</button>
+    </div>
+  </div>
+</section>
+
+<section class="ti-status hidden" id="lookupStatus">
+  <span class="ti-pulse"></span>
+  <div>
+    <strong>Lookup Status</strong>
+    <p id="lookupStatusText">Waiting...</p>
+  </div>
+</section>
+
+<section class="ti-results hidden" id="summaryCards">
+  <div class="ti-verdict-panel">
+    <p class="eyebrow">Correlated verdict</p>
+    <h2 id="verdictValue">-</h2>
+    <p id="confidenceValue">-</p>
+  </div>
+
+  <div class="ti-mini-card">
+    <span>Source agreement</span>
+    <strong id="sourceAgreementValue">-</strong>
+    <small id="sourceAgreementHint">-</small>
+  </div>
+
+  <div class="ti-mini-card">
+    <span>Primary signal</span>
+    <strong id="primarySignalValue">-</strong>
+    <small id="primarySignalHint">-</small>
+  </div>
+
+  <div class="ti-mini-card">
+    <span>Lookup type</span>
+    <strong id="lookupModeValue">-</strong>
+    <small>metadata only</small>
+  </div>
+</section>
+
+<section class="ti-provider-grid hidden" id="providerDetails">
+  <div class="ti-provider-card">
+    <div class="ti-provider-head">
+      <h2 id="providerOneTitle">Provider 1</h2>
+      <span class="mini-pill" id="providerOnePill">-</span>
+    </div>
+    <div class="ti-provider-rows" id="providerOneRows"></div>
+  </div>
+
+  <div class="ti-provider-card">
+    <div class="ti-provider-head">
+      <h2 id="providerTwoTitle">Provider 2</h2>
+      <span class="mini-pill" id="providerTwoPill">-</span>
+    </div>
+    <div class="ti-provider-rows" id="providerTwoRows"></div>
+  </div>
+</section>
+
+<section class="ti-analyst hidden" id="analystInterpretation">
+  <p class="eyebrow">Analyst interpretation</p>
+  <p id="interpretationText"></p>
+</section>
+
+<section class="panel hidden" id="developerJsonBox">
+  <details>
+    <summary>Developer JSON</summary>
+    <pre id="developerJson"></pre>
+  </details>
+</section>
+
+<script>
+let currentMode = "hash";
+
+const modeConfig = {
+  hash: {
+    eyebrow: "Hash Lookup",
+    title: "Check a file hash",
+    hint: "Paste an MD5, SHA1, or SHA256 hash to compare external intelligence from configured providers.",
+    placeholder: "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d",
+    button: "Lookup",
+    providerHint: "Providers: VirusTotal and MalwareBazaar.",
+    endpoint: "/api/reputation/hash",
+    payloadKey: "hash",
+    lookupType: "Hash"
+  },
+  url: {
+    eyebrow: "URL Reputation",
+    title: "Check a URL safely",
+    hint: "Paste a URL to query reputation sources. StageHawk does not open or download the URL.",
+    placeholder: "https://example.com/path/file.exe",
+    button: "Scan",
+    providerHint: "Providers: VirusTotal URL reports and URLhaus.",
+    endpoint: "/api/reputation/url",
+    payloadKey: "url",
+    lookupType: "URL"
+  }
+};
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  if (value === null || value === undefined || value === "") {
+    el.textContent = "-";
+  } else if (Array.isArray(value)) {
+    el.textContent = value.length ? value.join(", ") : "-";
+  } else if (typeof value === "object") {
+    el.textContent = JSON.stringify(value);
+  } else {
+    el.textContent = String(value);
+  }
+}
+
+function clearElement(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function addRow(container, label, value) {
+  const row = document.createElement("div");
+  const key = document.createElement("span");
+  const val = document.createElement("strong");
+
+  key.textContent = label;
+
+  if (value === null || value === undefined || value === "") {
+    val.textContent = "-";
+  } else if (Array.isArray(value)) {
+    val.textContent = value.length ? value.join(", ") : "-";
+  } else if (typeof value === "object") {
+    val.textContent = JSON.stringify(value);
+  } else {
+    val.textContent = String(value);
+  }
+
+  row.appendChild(key);
+  row.appendChild(val);
+  container.appendChild(row);
+}
+
+function resetResults() {
+  document.getElementById("lookupStatus").classList.add("hidden");
+  document.getElementById("summaryCards").classList.add("hidden");
+  document.getElementById("providerDetails").classList.add("hidden");
+  document.getElementById("analystInterpretation").classList.add("hidden");
+  document.getElementById("developerJsonBox").classList.add("hidden");
+}
+
+function setMode(mode) {
+  currentMode = mode;
+  const cfg = modeConfig[mode];
+
+  document.querySelectorAll(".ti-tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.mode === mode);
+  });
+
+  setText("modeEyebrow", cfg.eyebrow);
+  setText("modeTitle", cfg.title);
+  setText("modeHint", cfg.hint);
+  setText("lookupBtn", cfg.button);
+  setText("providerHint", cfg.providerHint);
+
+  const input = document.getElementById("intelValue");
+  input.value = "";
+  input.placeholder = cfg.placeholder;
+
+  resetResults();
+}
+
+function urlInterpretation(data) {
+  const verdict = data.verdict || "";
+
+  if (verdict === "no_malicious_url_reputation_found") {
+    return "No malicious URL reputation was found in the configured providers. This does not guarantee the URL is safe.";
+  }
+
+  if (verdict === "weak_url_reputation_signal") {
+    return "Only a weak URL reputation signal was found. Treat this as low-confidence evidence, not confirmed maliciousness.";
+  }
+
+  if (verdict === "suspicious_url_reputation_in_virustotal") {
+    return "Several VirusTotal detections indicate suspicious URL reputation. Review this URL before allowing or reporting it.";
+  }
+
+  if (verdict === "malicious_url_reputation_in_virustotal") {
+    return "VirusTotal reports a significant malicious URL reputation signal. Manual confirmation is recommended before blocking or reporting.";
+  }
+
+  if (verdict.includes("known_malicious")) {
+    return "The URL is confirmed by a strong external intelligence source. Treat it as malicious unless later evidence proves otherwise.";
+  }
+
+  return "The URL lookup was inconclusive. Check provider status, API keys, and quota limits.";
+}
+
+function hashInterpretation(data) {
+  const verdict = data.verdict || "";
+
+  if (verdict.includes("known_malware_confirmed")) {
+    return "The hash is confirmed by multiple external intelligence sources. Treat it as known malware unless later local analysis proves otherwise.";
+  }
+
+  if (verdict.includes("known_malware_in_malwarebazaar")) {
+    return "MalwareBazaar identifies this hash as known malware. This is a strong reputation signal.";
+  }
+
+  if (verdict.includes("malicious_reputation_in_virustotal")) {
+    return "VirusTotal reports a strong malicious reputation signal for this hash. Manual confirmation is recommended before operational action.";
+  }
+
+  if (verdict.includes("suspicious_reputation_in_virustotal")) {
+    return "VirusTotal reports several malicious detections. This is suspicious, but not enough alone for full attribution.";
+  }
+
+  if (verdict.includes("weak_reputation_signal")) {
+    return "Only a weak reputation signal was found. Treat this as low-confidence evidence, not confirmed malware.";
+  }
+
+  if (verdict.includes("no_reputation") || verdict.includes("not_found")) {
+    return "No malicious reputation was found in the configured providers. This does not prove the file is safe.";
+  }
+
+  return "The hash lookup was inconclusive. Check provider status, API keys, and quota limits.";
+}
+
+function summarizeHash(data) {
+  const vt = data.providers?.virustotal || {};
+  const mb = data.providers?.malwarebazaar || {};
+  const summary = data.summary || {};
+
+  const providerOneRows = document.getElementById("providerOneRows");
+  const providerTwoRows = document.getElementById("providerTwoRows");
+  clearElement(providerOneRows);
+  clearElement(providerTwoRows);
+
+  setText("providerOneTitle", "VirusTotal");
+  setText("providerOnePill", vt.status);
+  addRow(providerOneRows, "Status", vt.status);
+  addRow(providerOneRows, "Malicious", summary.virustotal_malicious);
+  addRow(providerOneRows, "Suspicious", summary.virustotal_suspicious);
+  addRow(providerOneRows, "Meaningful name", vt.meaningful_name);
+  addRow(providerOneRows, "Threat label", vt.threat_label);
+
+  setText("providerTwoTitle", "MalwareBazaar");
+  setText("providerTwoPill", mb.status);
+  addRow(providerTwoRows, "Status", mb.status);
+  addRow(providerTwoRows, "Query status", mb.query_status);
+  addRow(providerTwoRows, "Signature", mb.signature);
+  addRow(providerTwoRows, "File name", mb.file_name);
+  addRow(providerTwoRows, "File type", mb.file_type);
+  addRow(providerTwoRows, "Tags", mb.tags);
+
+  const vtFound = vt.status === "found";
+  const mbFound = mb.status === "found";
+
+  setText("sourceAgreementValue", vtFound && mbFound ? "Multiple sources" : vtFound || mbFound ? "Single source" : "No strong source");
+  setText("sourceAgreementHint", `VT ${vt.status || "-"} · MB ${mb.status || "-"}`);
+  setText("primarySignalValue", mb.signature || vt.threat_label || data.verdict || "-");
+  setText("primarySignalHint", `${summary.virustotal_malicious || 0} VT malicious detections`);
+  setText("lookupModeValue", "Hash");
+
+  return hashInterpretation(data);
+}
+
+function summarizeUrl(data) {
+  const vt = data.providers?.virustotal_url || {};
+  const uh = data.providers?.urlhaus || {};
+  const summary = data.summary || {};
+
+  const providerOneRows = document.getElementById("providerOneRows");
+  const providerTwoRows = document.getElementById("providerTwoRows");
+  clearElement(providerOneRows);
+  clearElement(providerTwoRows);
+
+  setText("providerOneTitle", "VirusTotal URL");
+  setText("providerOnePill", vt.status);
+  addRow(providerOneRows, "Status", vt.status);
+  addRow(providerOneRows, "Malicious", vt.malicious);
+  addRow(providerOneRows, "Suspicious", vt.suspicious);
+  addRow(providerOneRows, "Harmless", vt.harmless);
+  addRow(providerOneRows, "Undetected", vt.undetected);
+  addRow(providerOneRows, "Final URL", vt.last_final_url);
+  addRow(providerOneRows, "Title", vt.title);
+
+  setText("providerTwoTitle", "URLhaus");
+  setText("providerTwoPill", uh.status);
+  addRow(providerTwoRows, "Status", uh.status);
+  addRow(providerTwoRows, "Query status", uh.query_status);
+  addRow(providerTwoRows, "URL status", uh.url_status);
+  addRow(providerTwoRows, "Threat", uh.threat || uh.reason);
+  addRow(providerTwoRows, "Host", uh.host);
+  addRow(providerTwoRows, "Tags", uh.tags);
+  addRow(providerTwoRows, "Payloads", (uh.payloads || []).map(p => p.sha256_hash || p.filename || p.file_type || "payload"));
+
+  const vtFound = vt.status === "found";
+  const uhFound = uh.status === "found";
+
+  setText("sourceAgreementValue", vtFound && uhFound ? "Multiple sources" : vtFound || uhFound ? "Single source" : "No strong source");
+  setText("sourceAgreementHint", `VT ${vt.status || "-"} · URLhaus ${uh.status || "-"}`);
+  setText("primarySignalValue", uh.threat || data.verdict || "-");
+  setText("primarySignalHint", `${summary.virustotal_malicious || 0} VT malicious · URLhaus ${uh.status || "-"}`);
+  setText("lookupModeValue", "URL");
+
+  return urlInterpretation(data);
+}
+
+async function runLookup() {
+  const value = document.getElementById("intelValue").value.trim();
+  const cfg = modeConfig[currentMode];
+
+  const statusBox = document.getElementById("lookupStatus");
+  const statusText = document.getElementById("lookupStatusText");
+
+  statusBox.classList.remove("hidden");
+  statusText.textContent = "Querying configured intelligence providers...";
+
+  document.getElementById("summaryCards").classList.add("hidden");
+  document.getElementById("providerDetails").classList.add("hidden");
+  document.getElementById("analystInterpretation").classList.add("hidden");
+  document.getElementById("developerJsonBox").classList.add("hidden");
+
+  try {
+    const response = await fetch(cfg.endpoint, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({[cfg.payloadKey]: value})
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      statusText.textContent = data.detail || "Lookup failed.";
+      return;
+    }
+
+    setText("verdictValue", data.label || data.verdict);
+    setText("confidenceValue", "confidence: " + (data.confidence || "-"));
+
+    const interpretation = currentMode === "hash" ? summarizeHash(data) : summarizeUrl(data);
+
+    setText("interpretationText", interpretation);
+    document.getElementById("developerJson").textContent = JSON.stringify(data, null, 2);
+
+    statusText.textContent = "Lookup completed.";
+    document.getElementById("summaryCards").classList.remove("hidden");
+    document.getElementById("providerDetails").classList.remove("hidden");
+    document.getElementById("analystInterpretation").classList.remove("hidden");
+    document.getElementById("developerJsonBox").classList.remove("hidden");
+  } catch (error) {
+    statusText.textContent = "Lookup failed: " + error;
+  }
+}
+
+document.querySelectorAll(".ti-tab").forEach(btn => {
+  btn.addEventListener("click", () => setMode(btn.dataset.mode));
+});
+
+document.getElementById("lookupBtn").addEventListener("click", runLookup);
+document.getElementById("clearBtn").addEventListener("click", () => {
+  document.getElementById("intelValue").value = "";
+  resetResults();
+});
+
+document.getElementById("intelValue").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    runLookup();
+  }
+});
+</script>
+{% endblock %}

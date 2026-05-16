@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Defensive local YARA signature workspace for StageHawk malware-analysis orchestration.",
+  "rule_collections": {
+    "generic": {
+      "path": "signatures/yara/generic",
+      "quality_level": "broad_suspicious_patterns",
+      "confidence_meaning": "heuristic triage signal, not confirmed malware",
+      "description": "Generic suspicious PE or static-analysis indicators. Matches may be noisy and require analyst review.",
+      "rule_files": [
+        "signatures/yara/generic/stagehawk_generic_suspicious_pe.yar"
+      ]
+    },
+    "known_families": {
+      "path": "signatures/yara/known_families",
+      "quality_level": "verified_attributed_known_family_rules",
+      "confidence_meaning": "verified attributed family rule when populated",
+      "description": "Verified and attributed malware-family rules only. This collection should remain empty until rules have trusted provenance and false-positive review.",
+      "rule_files": []
+    },
+    "experimental": {
+      "path": "signatures/yara/experimental",
+      "quality_level": "research_testing_rules",
+      "confidence_meaning": "research/testing signal only",
+      "description": "Research or testing rules. Matches are not strong evidence alone and should not drive attribution.",
+      "rule_files": []
+    }
+  },
+  "quality_policy": [
+    "Rules must be source-tracked with clear provenance.",
+    "Rules must be reviewed for false-positive risk before production use.",
+    "External rule packs must not be imported blindly.",
+    "Known-family attribution requires verified rule provenance and review notes.",
+    "Experimental matches must be treated as analyst-supporting signals only."
+  ],
+  "safety_notes": [
+    "This workspace is for defensive malware-analysis orchestration only.",
+    "Local signature scanning must not execute samples on the controller host.",
+    "Dynamic execution remains CAPE-only in the isolated sandbox environment.",
+    "Do not add malware creation, persistence, evasion, spreading, or payload behavior."
+  ],
+  "last_updated": "2026-05-10"
+}

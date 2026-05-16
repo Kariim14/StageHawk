@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+{% block content %}
+{% set case = report.get('case', {}) if report else {} %}
+{% set sample = report.get('input_sample', {}) if report else {} %}
+{% set summary = report.get('summary', {}) if report else {} %}
+{% set static = report.get('static_analysis_summary', {}) if report else {} %}
+{% set signature = report.get('signature_scan', {}) if report else {} %}
+{% set sig_summary = signature.get('summary', {}) if signature else {} %}
+{% set sig_engines = signature.get('engines', {}) if signature else {} %}
+{% set yara = sig_engines.get('yara', {}) %}
+{% set clamav = sig_engines.get('clamav', {}) %}
+{% set sig_catalog = signature.get('signature_catalog', {}) if signature else {} %}
+{% set sig_collections = sig_catalog.get('collections', {}) %}
+{% set yara_matches = yara.get('matches', []) %}
+{% set clamav_matches = clamav.get('matches', []) %}
+{% set cape = report.get('cape_analysis_summary', {}) if report else {} %}
+{% set runtime = report.get('runtime_evidence_summary', {}) if report else {} %}
+{% set graph = report.get('stage_graph', {}) if report else {} %}
+{% set artifacts = report.get('extracted_artifacts', []) if report else [] %}
+{% set iocs = report.get('iocs', {}) if report else {} %}
+{% set mappings = report.get('mitre_style_mapping', []) if report else [] %}
+{% set recursive = report.get('recursive_analysis_results', []) if report else [] %}
+{% set limitations = report.get('limitations', []) if report else [] %}
+{% set timing = report.get('timing', {}) if report else {} %}
+{% set rep_summary = reputation.get('summary', {}) if reputation else {} %}
+{% set rep_providers = reputation.get('providers', {}) if reputation else {} %}
+{% set vt = rep_providers.get('virustotal', {}) %}
+{% set mb = rep_providers.get('malwarebazaar', {}) %}
+{% set behavior = behavior_classification or {} %}
+
+<section class="report-hero">
+  <div>
+    <p class="eyebrow">Malware Analysis Report</p>
+    <h1>{{ case.get('case_name', case_id) }}</h1>
+    <p class="muted"><code>{{ case.get('case_id', case_id) }}</code></p>
+
+    <div class="case-badges">
+      <span class="status-badge status-{{ case.get('current_status', 'unknown') }}">{{ case.get('current_status', 'unknown') }}</span>
+      <span class="status-badge">Mode: {{ case.get('analysis_mode', '-') }}</span>
+      <span class="status-badge">Static: {{ report.get('backend_summary', {}).get('static', '-') }}</span>
+      <span class="status-badge">Dynamic: {{ report.get('backend_summary', {}).get('dynamic', '-') }}</span>
+    </div>
+  </div>
+
+  <nav class="case-actions">
+    <a class="button" href="/cases/{{ case_id }}">Back to Case</a>
+    <a class="button" href="/cases/{{ case_id }}/graph">View Graph</a>
+    <a class="button secondary" href="/api/cases/{{ case_id }}/download/report_json">Download JSON</a>
+    <a class="button secondary" href="/api/cases/{{ case_id }}/download/report_md">Download Markdown</a>
+  </nav>
+</section>
+
+<section class="report-grid">
+  <div class="panel report-assessment">
+    <p class="eyebrow">Executive Assessment</p>
+    <h2>{{ assessment.get('assessment', 'Evidence collected; review required') }}</h2>
+    <p>
+      <strong>Confidence:</strong>
+      <span class="mini-pill">{{ assessment.get('confidence', 'unknown') }}</span>
+    </p>
+    <p class="muted">
+      {{ assessment.get('note', 'Assessment is based on collected evidence and should be reviewed by an analyst.') }}
+    </p>
+  </div>
+
+  <div class="panel score-card">
+    <p class="eyebrow">StageHawk Evidence Score</p>
+    <div class="score-number">{{ stagehawk_score.score }}<span>/100</span></div>
+    <div class="score-bar"><div style="width: {{ stagehawk_score.score }}%"></div></div>
+    <p><strong>{{ stagehawk_score.label }}</strong></p>
+    <p class="muted">{{ stagehawk_score.note }}</p>
+  </div>
+
+  <div class="panel score-card maliciousness-card">
+    <p class="eyebrow">Maliciousness Likelihood</p>
+    <div class="score-number">{{ maliciousness.score }}<span>/100</span></div>
+    <div class="score-bar risk-bar"><div style="width: {{ maliciousness.score }}%"></div></div>
+    <p><strong>{{ maliciousness.label }}</strong></p>
+    <p class="muted">{{ maliciousness.explanation }}</p>
+    <p class="muted">{{ maliciousness.note }}</p>
+  </div>
+</section>
+
+<section class="metric-grid report-metrics">
+  <div class="metric-card">
+    <span>Artifacts</span>
+    <strong>{{ summary.get('artifact_count', 0) }}</strong>
+    <small>{{ summary.get('stage_artifact_count', 0) }} stage-like</small>
+  </div>
+  <div class="metric-card">
+    <span>IOCs</span>
+    <strong>{{ summary.get('ioc_count', 0) }}</strong>
+    <small>{{ summary.get('ioc_type_count', 0) }} categories</small>
+  </div>
+  <div class="metric-card">
+    <span>Behavior mappings</span>
+    <strong>{{ summary.get('mitre_mapping_count', 0) }}</strong>
+    <small>ATT&CK-style labels</small>
+  </div>
+  <div class="metric-card">
+    <span>CAPE</span>
+    <strong>{{ cape.get('score', 'N/A') }}</strong>
+    <small>{{ cape.get('signature_count', 0) }} signatures</small>
+  </div>
+  <div class="metric-card">
+    <span>Graph</span>
+    <strong>{{ summary.get('graph_node_count', 0) }} / {{ summary.get('graph_edge_count', 0) }}</strong>
+    <small>nodes / edges</small>
+  </div>
+  <div class="metric-card">
+    <span>Local signatures</span>
+    <strong class="small-strong">{{ signature.get('verdict', 'not available') }}</strong>
+    <small>{{ sig_summary.get('total_match_count', 0) }} matches · {{ yara.get('rules_loaded', [])|length }} YARA rules</small>
+  </div>
+  <div class="metric-card">
+    <span>External reputation</span>
+    <strong class="small-strong">{{ reputation.get('verdict', 'not checked') }}</strong>
+    <small>VT {{ rep_summary.get('virustotal_malicious', 0) }} malicious · MB {{ mb.get('status', '-') }}</small>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>1. Sample Identification</h2>
+  <div class="report-table">
+    <div><span>Name</span><strong>{{ sample.get('name', '-') }}</strong></div>
+    <div><span>Size</span><strong>{{ sample.get('size', '-') }} bytes</strong></div>
+    <div><span>SHA-256</span><strong><code>{{ sample.get('sha256', '-') }}</code></strong></div>
+    <div><span>SHA-1</span><strong><code>{{ sample.get('sha1', '-') }}</code></strong></div>
+    <div><span>MD5</span><strong><code>{{ sample.get('md5', '-') }}</code></strong></div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>2. Methodology</h2>
+  <p>
+    The sample was processed through the configured local analysis pipeline. Static analysis uses Ghidra/static extraction when selected.
+    Dynamic execution is performed only through the CAPE sandbox and isolated Windows VM when selected. Results are correlated into artifacts,
+    IOCs, behavior mappings, and a stage relationship graph.
+  </p>
+  <p class="muted">
+    The report separates observed evidence from interpretation. It does not claim malware-family attribution unless a signature or reputation source supports it.
+  </p>
+</section>
+
+<section class="report-grid">
+  <div class="panel">
+    <h2>3. Behavior Classification</h2>
+    <div class="evidence-list">
+      <div><span>Classification</span><strong>{{ behavior.get('label', '-') }}</strong></div>
+      <div><span>Installer-like behavior</span><strong>{{ behavior.get('installer_like', false) }}</strong></div>
+      <div><span>High-risk CAPE signatures</span><strong>{{ behavior.get('high_risk_signature_count', 0) }}</strong></div>
+      <div><span>Max CAPE severity</span><strong>{{ behavior.get('max_cape_severity', 0) }}</strong></div>
+    </div>
+    {% if behavior.get('caution') %}
+    <h3>Caution notes</h3>
+    <ul class="compact-list">
+      {% for item in behavior.get('caution') %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>3a. External Reputation</h2>
+    <div class="evidence-list">
+      <div><span>Reputation verdict</span><strong>{{ reputation.get('verdict', '-') }}</strong></div>
+      <div><span>VirusTotal status</span><strong>{{ vt.get('status', '-') }}</strong></div>
+      <div><span>VirusTotal malicious</span><strong>{{ rep_summary.get('virustotal_malicious', 0) }}</strong></div>
+      <div><span>VirusTotal suspicious</span><strong>{{ rep_summary.get('virustotal_suspicious', 0) }}</strong></div>
+      <div><span>MalwareBazaar status</span><strong>{{ mb.get('status', '-') }}</strong></div>
+      <div><span>MalwareBazaar signature</span><strong>{{ mb.get('signature') or '-' }}</strong></div>
+    </div>
+  </div>
+</section>
+
+<section class="report-grid">
+  <div class="panel">
+    <h2>4. Detection Summary</h2>
+    <div class="evidence-list">
+      <div><span>Assessment</span><strong>{{ assessment.get('assessment', '-') }}</strong></div>
+      <div><span>Confidence</span><strong>{{ assessment.get('confidence', '-') }}</strong></div>
+      <div><span>StageHawk score</span><strong>{{ stagehawk_score.score }}/100</strong></div>
+      <div><span>Maliciousness likelihood</span><strong>{{ maliciousness.score }}/100 — {{ maliciousness.label }}</strong></div>
+      <div><span>Local signature verdict</span><strong>{{ signature.get('verdict', 'not available') }}</strong></div>
+      <div><span>YARA available</span><strong>{{ yara.get('available', '-') }}</strong></div>
+      <div><span>YARA matches</span><strong>{{ yara.get('match_count', yara_matches|length) }}</strong></div>
+      <div><span>ClamAV available</span><strong>{{ clamav.get('available', '-') }}</strong></div>
+      <div><span>CAPE status</span><strong>{{ cape.get('status', '-') }}</strong></div>
+      <div><span>CAPE score</span><strong>{{ cape.get('score', '-') }}</strong></div>
+      <div><span>CAPE signatures</span><strong>{{ cape.get('signature_count', 0) }}</strong></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>5. Evidence Score Breakdown</h2>
+    {% if stagehawk_score.breakdown %}
+    <ul class="compact-list">
+      {% for item in stagehawk_score.breakdown %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No scored evidence was available.</p>
+    {% endif %}
+    <p class="muted">
+      This score helps prioritize review. It is not a mathematical probability and should not replace analyst judgment.
+    </p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>4a. Local Signature Quality</h2>
+  <p class="muted">
+    Generic local YARA rules are heuristic triage signals. They do not confirm malware by themselves, and they do not provide family attribution.
+    Known-family attribution is only valid for verified rules in the known_families collection.
+    {% if clamav.get('status') == 'unavailable' %}The ClamAV engine was unavailable; this is not evidence that the sample is clean.{% endif %}
+    {% if signature.get('verdict') == 'no_signature_sources_configured' %}No local signature sources were configured for this run.{% endif %}
+  </p>
+
+  <div class="report-table">
+    <div><span>Signature verdict</span><strong>{{ signature.get('verdict', 'not available') }}</strong></div>
+    <div><span>YARA status</span><strong>{{ yara.get('status', 'not available') }}</strong></div>
+    <div><span>YARA available</span><strong>{{ yara.get('available', '-') }}</strong></div>
+    <div><span>YARA rules loaded</span><strong>{{ yara.get('rules_loaded', [])|length }}</strong></div>
+    <div><span>YARA match count</span><strong>{{ yara.get('match_count', yara_matches|length) }}</strong></div>
+    <div><span>ClamAV status</span><strong>{{ clamav.get('status', 'not available') }}</strong></div>
+    <div><span>ClamAV available</span><strong>{{ clamav.get('available', '-') }}</strong></div>
+    <div><span>Catalog loaded</span><strong>{{ sig_catalog.get('metadata_loaded', false) }}</strong></div>
+  </div>
+
+  {% if sig_collections %}
+  <h3>Local Signature Sources</h3>
+  <div class="report-table">
+    {% for name, collection in sig_collections.items() %}
+    <div>
+      <span>{{ name }}</span>
+      <strong>{{ collection.get('quality', 'unknown') }}</strong>
+      <small>{{ collection.get('rule_files', [])|length }} rule files · {{ collection.get('confidence_meaning', '') }}</small>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if yara_matches or clamav_matches %}
+  <h3>Local Signature Matches</h3>
+  {% if yara_matches %}
+  <table class="report-data-table">
+    <thead>
+      <tr>
+        <th>Rule</th>
+        <th>Collection</th>
+        <th>Quality</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for match in yara_matches[:20] %}
+      <tr>
+        <td><code>{{ match.get('rule', '-') }}</code></td>
+        <td>{{ match.get('collection', 'unknown') }}</td>
+        <td>{{ match.get('quality', 'unknown') }}</td>
+        <td><code>{{ match.get('source_rule_file', '-') }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% else %}
+  <p class="muted">No local signature match was recorded.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>5a. Maliciousness Likelihood Explanation</h2>
+  <p>{{ maliciousness.explanation }}</p>
+  <p class="muted">{{ maliciousness.note }}</p>
+
+  {% if maliciousness.drivers %}
+  <h3>Why this likelihood was assigned</h3>
+  <ul class="compact-list">
+    {% for item in maliciousness.drivers %}
+    <li>{{ item }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No strong maliciousness drivers were collected.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>5. Static Analysis Findings</h2>
+  {% if static %}
+  <div class="report-table">
+    {% for key, value in static.items() %}
+    <div><span>{{ key }}</span><strong>{{ value }}</strong></div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No static summary was available.</p>
+  {% endif %}
+
+  <h3>Stage / Behavior Candidates</h3>
+  {% set candidates = report.get('stage_candidate_summary', {}).get('top_candidates', []) %}
+  {% if candidates %}
+  <table class="report-data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Reason</th>
+        <th>Confidence</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in candidates %}
+      <tr>
+        <td><code>{{ item.get('candidate_id', '-') }}</code></td>
+        <td>{{ item.get('reason', '-') }}</td>
+        <td>{{ item.get('confidence', '-') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No stage candidates were produced.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>6. CAPE Sandbox Dynamic Behavior</h2>
+  <div class="report-table">
+    <div><span>Status</span><strong>{{ cape.get('status', '-') }}</strong></div>
+    <div><span>Task ID</span><strong>{{ cape.get('task_id', '-') }}</strong></div>
+    <div><span>Mode</span><strong>{{ cape.get('mode', '-') }}</strong></div>
+    <div><span>Score</span><strong>{{ cape.get('score', '-') }}</strong></div>
+    <div><span>Signatures</span><strong>{{ cape.get('signature_count', 0) }}</strong></div>
+    <div><span>Dropped artifacts copied</span><strong>{{ cape.get('dropped_artifact_count', 0) }}</strong></div>
+    <div><span>Reason</span><strong>{{ cape.get('reason') or '-' }}</strong></div>
+  </div>
+
+	  <h3>Runtime Evidence</h3>
+	  <div class="report-table">
+	    <div><span>API hit markers</span><strong>{{ runtime.get('marker_count', 0) }}</strong></div>
+	    <div><span>Dropped stage artifacts</span><strong>{{ runtime.get('dropped_stage_artifact_count', 0) }}</strong></div>
+	  </div>
+
+	  {% set cape_phase_names = ["cape_submission", "cape_sandbox_wait", "cape_import", "cape_artifact_copy", "cape_total"] %}
+	  {% set cape_phase_steps = [] %}
+	  {% for name in cape_phase_names %}
+	    {% if timing.get('steps', {}).get(name) %}
+	      {% set _ = cape_phase_steps.append(name) %}
+	    {% endif %}
+	  {% endfor %}
+	  {% if cape_phase_steps %}
+	  <h3>CAPE Phase Timing</h3>
+	  <p class="muted">
+	    CAPE phases are timed at existing safe orchestration boundaries. Report import and artifact copy are separated at the nearest boundary inside the CAPE import workflow.
+	  </p>
+	  <div class="report-table">
+	    {% for name in cape_phase_steps %}
+	    {% set item = timing.get('steps', {}).get(name, {}) %}
+	    <div><span>{{ name }}</span><strong>{{ item.get('duration_seconds', '-') }} seconds — {{ item.get('status', '-') }}</strong></div>
+	    {% endfor %}
+	  </div>
+	  {% endif %}
+	</section>
+
+<section class="panel">
+  <h2>7. Dropped Artifacts and Relationships</h2>
+  <p>
+    The graph links the original sample to extracted artifacts observed during analysis. Use this section to understand how child artifacts relate
+    to the original sample.
+  </p>
+
+  <div class="report-table">
+    <div><span>Graph nodes</span><strong>{{ graph.get('nodes', [])|length }}</strong></div>
+    <div><span>Graph edges</span><strong>{{ graph.get('edges', [])|length }}</strong></div>
+  </div>
+
+  {% set stage_artifacts = [] %}
+  {% for artifact in artifacts %}
+    {% if artifact.get('is_stage_artifact') %}
+      {% set _ = stage_artifacts.append(artifact) %}
+    {% endif %}
+  {% endfor %}
+
+  {% if stage_artifacts %}
+  <table class="report-data-table">
+    <thead>
+      <tr>
+        <th>Stage</th>
+        <th>Type</th>
+        <th>SHA-256</th>
+        <th>Path</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for artifact in stage_artifacts[:20] %}
+      <tr>
+        <td><code>{{ artifact.get('stage_id', '-') }}</code></td>
+        <td>{{ artifact.get('file_type') or artifact.get('artifact_kind') or '-' }}</td>
+        <td><code>{{ artifact.get('sha256', '-') }}</code></td>
+        <td><code>{{ artifact.get('destination_path') or artifact.get('path') or '-' }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No dropped stage-like artifacts were collected in this run.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>8. Recursive Analysis</h2>
+  {% if recursive %}
+  <table class="report-data-table">
+    <thead>
+      <tr>
+        <th>Artifact</th>
+        <th>Status</th>
+        <th>Reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in recursive %}
+      <tr>
+        <td><code>{{ item.get('artifact', '-') }}</code></td>
+        <td>{{ item.get('status', '-') }}</td>
+        <td>{{ item.get('reason', '-') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No child artifacts were eligible for recursive static analysis.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>9. Indicators of Compromise</h2>
+  {% if iocs %}
+  <div class="ioc-report-grid">
+    {% for key, values in iocs.items() %}
+    <div class="ioc-report-card">
+      <h3>{{ key }} <span>{{ values|length }}</span></h3>
+      {% if values %}
+      <ul>
+        {% for value in values[:25] %}
+        <li><code>{{ value }}</code></li>
+        {% endfor %}
+      </ul>
+      {% if values|length > 25 %}
+      <p class="muted">Showing first 25 of {{ values|length }}. Full list is available in JSON/Markdown export.</p>
+      {% endif %}
+      {% else %}
+      <p class="muted">None</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No IOCs were extracted.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>10. MITRE ATT&CK-Style Behavior Mapping</h2>
+  <p class="muted">
+    These mappings are generated from observed/static evidence and should be reviewed before operational use.
+  </p>
+
+  {% if mappings %}
+  <table class="report-data-table">
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Behavior</th>
+        <th>Technique</th>
+        <th>Type</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in mappings[:50] %}
+      <tr>
+        <td><code>{{ item.get('source_api', '-') }}</code></td>
+        <td>{{ item.get('label', '-') }}</td>
+        <td>{{ item.get('technique_id', '-') }}</td>
+        <td>{{ item.get('mapping_type', '-') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No behavior mappings were produced.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>11. Limitations</h2>
+  {% if limitations %}
+  <ul class="compact-list">
+    {% for limitation in limitations %}
+    <li>{{ limitation }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No limitations were listed.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>12. Recommended Next Actions</h2>
+  <ul class="compact-list">
+    <li>Review CAPE signatures, dropped artifacts, and IOC lists before final classification.</li>
+    <li>Use hash reputation lookup to compare the sample hash against VirusTotal and MalwareBazaar.</li>
+    <li>Prioritize child artifacts with hashes, dropped-file evidence, or suspicious behavior mappings.</li>
+    <li>Configure local YARA and ClamAV signatures for stronger local known-malware detection.</li>
+    <li>Preserve the case folder as evidence for screenshots, JSON, graph, and report exports.</li>
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>13. Evidence Appendix</h2>
+  <div class="report-table">
+    <div><span>Final JSON</span><strong><code>reports/final_report.json</code></strong></div>
+    <div><span>Final Markdown</span><strong><code>reports/final_report.md</code></strong></div>
+    <div><span>Graph files</span><strong><code>graph/</code></strong></div>
+    <div><span>Static outputs</span><strong><code>static/</code></strong></div>
+    <div><span>CAPE outputs</span><strong><code>cape/</code></strong></div>
+    <div><span>Extracted artifacts</span><strong><code>extracted/</code></strong></div>
+  </div>
+
+  <details>
+    <summary>Developer Markdown Export</summary>
+    <pre>{{ report_md }}</pre>
+  </details>
+</section>
+{% endblock %}

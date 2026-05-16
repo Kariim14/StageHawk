@@ -1,0 +1,52 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets
+.env
+.env.*
+Keys.txt
+keys.txt
+*key*
+*secret*
+*.pem
+*.key
+!.env.example
+
+# Logs
+%LOG%
+*.log
+logs/
+
+# Malware / payloads / samples / executables
+samples/
+malware_samples/
+payloads/*
+!payloads/README.md
+*.exe
+*.dll
+*.bin
+*.dat
+*.pcap
+*.zip
+*.7z
+*.rar
+
+# Analysis outputs / generated data
+cases/
+outputs/
+reports/
+results/
+dev_backups/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local/private docs
+docs/STAGEHAWK_FINAL_EVIDENCE_LOG.md
+docs/environment_detected.md

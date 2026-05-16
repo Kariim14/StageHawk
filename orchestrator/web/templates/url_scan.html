@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="report-hero">
+  <div>
+    <p class="eyebrow">Threat Intelligence</p>
+    <h1>URL Reputation Scan</h1>
+    <p class="muted">
+      Paste a URL to query URLhaus and VirusTotal URL reputation. This does not browse, execute, or download the URL.
+    </p>
+  </div>
+</section>
+
+<section class="panel">
+  <label for="urlValue"><strong>URL</strong></label>
+  <input id="urlValue" type="text" placeholder="https://example.com/path/file.exe" style="width: 100%; max-width: 760px;">
+  <br><br>
+  <button class="button" id="lookupUrlBtn">Scan URL Reputation</button>
+  <p class="muted">Providers currently used: URLhaus and VirusTotal URL reports.</p>
+</section>
+
+<section class="panel hidden" id="lookupStatus">
+  <h2>Lookup Status</h2>
+  <p id="lookupStatusText" class="muted">Waiting...</p>
+</section>
+
+<section class="metric-grid hidden" id="summaryCards">
+  <div class="metric-card">
+    <span>Verdict</span>
+    <strong class="small-strong" id="verdictValue">-</strong>
+    <small id="confidenceValue">-</small>
+  </div>
+  <div class="metric-card">
+    <span>VirusTotal</span>
+    <strong id="vtStatusValue">-</strong>
+    <small id="vtStatsValue">-</small>
+  </div>
+  <div class="metric-card">
+    <span>URLhaus</span>
+    <strong id="urlhausStatusValue">-</strong>
+    <small id="urlhausThreatValue">-</small>
+  </div>
+</section>
+
+<section class="report-grid hidden" id="providerDetails">
+  <div class="panel">
+    <div class="card-title-row">
+      <h2>VirusTotal URL Report</h2>
+      <span class="mini-pill" id="vtPill">-</span>
+    </div>
+    <div class="evidence-list">
+      <div><span>Status</span><strong id="vtStatusDetail">-</strong></div>
+      <div><span>Malicious</span><strong id="vtMaliciousDetail">-</strong></div>
+      <div><span>Suspicious</span><strong id="vtSuspiciousDetail">-</strong></div>
+      <div><span>Harmless</span><strong id="vtHarmlessDetail">-</strong></div>
+      <div><span>Undetected</span><strong id="vtUndetectedDetail">-</strong></div>
+      <div><span>Final URL</span><strong id="vtFinalUrlDetail">-</strong></div>
+      <div><span>Title</span><strong id="vtTitleDetail">-</strong></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="card-title-row">
+      <h2>URLhaus</h2>
+      <span class="mini-pill" id="urlhausPill">-</span>
+    </div>
+    <div class="evidence-list">
+      <div><span>Status</span><strong id="urlhausStatusDetail">-</strong></div>
+      <div><span>Query status</span><strong id="urlhausQueryStatusDetail">-</strong></div>
+      <div><span>URL status</span><strong id="urlhausUrlStatusDetail">-</strong></div>
+      <div><span>Threat</span><strong id="urlhausThreatDetail">-</strong></div>
+      <div><span>Host</span><strong id="urlhausHostDetail">-</strong></div>
+      <div><span>Tags</span><strong id="urlhausTagsDetail">-</strong></div>
+      <div><span>Payloads</span><strong id="urlhausPayloadsDetail">-</strong></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel hidden" id="analystInterpretation">
+  <h2>Analyst Interpretation</h2>
+  <p id="interpretationText" class="muted"></p>
+</section>
+
+<section class="panel hidden" id="developerJsonBox">
+  <details>
+    <summary>Developer JSON</summary>
+    <pre id="developerJson"></pre>
+  </details>
+</section>
+
+<script>
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (value === null || value === undefined || value === "") {
+    el.textContent = "-";
+  } else if (Array.isArray(value)) {
+    el.textContent = value.length ? value.join(", ") : "-";
+  } else if (typeof value === "object") {
+    el.textContent = JSON.stringify(value);
+  } else {
+    el.textContent = String(value);
+  }
+}
+
+function interpretationFor(data) {
+  const verdict = data.verdict || "";
+  if (verdict.includes("known_malicious")) {
+    return "The URL is confirmed by at least one strong external intelligence source. Treat it as malicious unless later evidence proves otherwise.";
+  }
+  if (verdict.includes("malicious_url_reputation")) {
+    return "VirusTotal reports a significant malicious reputation signal. Manual confirmation is recommended before blocking or reporting.";
+  }
+  if (verdict.includes("suspicious")) {
+    return "Some suspicious URL reputation was found. This is not enough alone for final attribution, but it should be reviewed.";
+  }
+  if (verdict.includes("weak")) {
+    return "Only a weak reputation signal was found. Treat this as a low-confidence warning, not a confirmed malicious URL.";
+  }
+  if (verdict.includes("no_malicious")) {
+    return "No malicious URL reputation was found in the configured providers. This does not guarantee the URL is safe.";
+  }
+  return "The lookup was inconclusive. Check provider status, API keys, and quota limits.";
+}
+
+async function lookupUrl() {
+  const url = document.getElementById("urlValue").value.trim();
+  const statusBox = document.getElementById("lookupStatus");
+  const statusText = document.getElementById("lookupStatusText");
+
+  statusBox.classList.remove("hidden");
+  statusText.textContent = "Looking up URL reputation...";
+
+  document.getElementById("summaryCards").classList.add("hidden");
+  document.getElementById("providerDetails").classList.add("hidden");
+  document.getElementById("analystInterpretation").classList.add("hidden");
+  document.getElementById("developerJsonBox").classList.add("hidden");
+
+  try {
+    const response = await fetch("/api/reputation/url", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({url})
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      statusText.textContent = data.detail || "Lookup failed.";
+      return;
+    }
+
+    const vt = data.providers?.virustotal_url || {};
+    const uh = data.providers?.urlhaus || {};
+    const summary = data.summary || {};
+
+    setText("verdictValue", data.label || data.verdict);
+    setText("confidenceValue", "confidence: " + (data.confidence || "-"));
+
+    setText("vtStatusValue", vt.status);
+    setText("vtStatsValue", `${summary.virustotal_malicious || 0} malicious / ${summary.virustotal_suspicious || 0} suspicious`);
+
+    setText("urlhausStatusValue", uh.status);
+    setText("urlhausThreatValue", uh.threat || uh.reason);
+
+    setText("vtPill", vt.status);
+    setText("vtStatusDetail", vt.status);
+    setText("vtMaliciousDetail", vt.malicious);
+    setText("vtSuspiciousDetail", vt.suspicious);
+    setText("vtHarmlessDetail", vt.harmless);
+    setText("vtUndetectedDetail", vt.undetected);
+    setText("vtFinalUrlDetail", vt.last_final_url);
+    setText("vtTitleDetail", vt.title);
+
+    setText("urlhausPill", uh.status);
+    setText("urlhausStatusDetail", uh.status);
+    setText("urlhausQueryStatusDetail", uh.query_status);
+    setText("urlhausUrlStatusDetail", uh.url_status);
+    setText("urlhausThreatDetail", uh.threat || uh.reason);
+    setText("urlhausHostDetail", uh.host);
+    setText("urlhausTagsDetail", uh.tags);
+    setText("urlhausPayloadsDetail", (uh.payloads || []).map(p => p.sha256_hash || p.filename || p.file_type || "payload"));
+
+    setText("interpretationText", interpretationFor(data));
+    document.getElementById("developerJson").textContent = JSON.stringify(data, null, 2);
+
+    statusText.textContent = "Lookup completed.";
+    document.getElementById("summaryCards").classList.remove("hidden");
+    document.getElementById("providerDetails").classList.remove("hidden");
+    document.getElementById("analystInterpretation").classList.remove("hidden");
+    document.getElementById("developerJsonBox").classList.remove("hidden");
+  } catch (error) {
+    statusText.textContent = "Lookup failed: " + error;
+  }
+}
+
+document.getElementById("lookupUrlBtn").addEventListener("click", lookupUrl);
+</script>
+{% endblock %}

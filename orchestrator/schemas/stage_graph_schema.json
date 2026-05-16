@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stage Graph",
+  "type": "object",
+  "required": ["schema_version", "graph_type", "nodes", "edges"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "graph_type": {"const": "stage_dependency_graph"},
+    "nodes": {"type": "array"},
+    "edges": {"type": "array"},
+    "limitations": {"type": "array"}
+  }
+}

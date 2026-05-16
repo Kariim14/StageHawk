@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>System Status</h1>
+<p class="muted">
+  This page checks whether the local analysis environment is ready for the implemented pipeline:
+  Ghidra static analysis + CAPE Sandbox dynamic execution.
+</p>
+
+<section class="grid">
+  <div class="panel">
+    <h2>Ghidra Static Analysis</h2>
+    <p>
+      {% if status.ghidra.configured %}
+        <span class="pill">ready</span>
+      {% else %}
+        <span class="pill">not configured</span>
+      {% endif %}
+    </p>
+    <ul>
+      <li>Configured: {{ status.ghidra.configured }}</li>
+      <li>Enabled by default: {{ status.ghidra.enabled }}</li>
+      <li>Path: <code>{{ status.ghidra.path }}</code></li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>CAPE Sandbox</h2>
+    <p>
+      {% if status.cape.submission_available %}
+        <span class="pill">ready</span>
+      {% else %}
+        <span class="pill">not ready</span>
+      {% endif %}
+    </p>
+    <ul>
+      <li>Installed: {{ status.cape.installed }}</li>
+      <li>API reachable: {{ status.cape.reachable }}</li>
+      <li>Submission available: {{ status.cape.submission_available }}</li>
+      <li>API base: <code>{{ status.cape.api_base }}</code></li>
+      <li>Install path: <code>{{ status.cape.install_path }}</code></li>
+      <li>Storage path: <code>{{ status.cape.storage_path }}</code></li>
+      <li>Machinery: {{ status.cape.machinery }}</li>
+      <li>Selected VM: {{ status.cape.vm_name }}</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>CAPE Services</h2>
+    <ul>
+      {% for name, state in status.cape.services.items() %}
+        <li>{{ name }}: <strong>{{ state }}</strong></li>
+      {% endfor %}
+    </ul>
+  </div>
+
+	  <div class="panel">
+	    <h2>Safety</h2>
+    <p>
+      {% if status.real_malware_mode %}
+        <span class="pill">real malware mode enabled</span>
+      {% else %}
+        <span class="pill">safe academic mode</span>
+      {% endif %}
+    </p>
+    <ul>
+      <li>Real malware mode: {{ status.real_malware_mode }}</li>
+      <li>Results root: <code>{{ status.results_root }}</code></li>
+      <li>Default analysis mode: {{ status.default_analysis_mode }}</li>
+    </ul>
+	  </div>
+
+	  <div class="panel">
+	    <h2>Web/API Hardening</h2>
+	    <ul>
+	      <li>Upload max size: {{ status.web_security.upload_max_bytes }} bytes</li>
+	      <li>Allowed extensions: <code>{{ status.web_security.allowed_upload_extensions | join(", ") }}</code></li>
+	      <li>Rate limiting enabled: {{ status.web_security.rate_limit_enabled }}</li>
+	      <li>Rate limit: {{ status.web_security.rate_limit_max_requests }} requests / {{ status.web_security.rate_limit_window_seconds }} seconds</li>
+	      <li>Max concurrent jobs: {{ status.web_security.max_concurrent_jobs }}</li>
+	      <li>Secret values redacted: {{ status.web_security.secret_values_redacted }}</li>
+	    </ul>
+	  </div>
+	</section>
+
+<section class="panel">
+  <h2>Recommended Action</h2>
+  <p><strong>{{ status.recommended_next_action }}</strong></p>
+  <p class="muted">
+    Full Analysis uses Ghidra for static analysis and CAPE Sandbox for safe VM-based dynamic execution.
+  </p>
+</section>
+
+<section class="panel">
+  <h2>Optional Future Extension</h2>
+  <p>
+    Debugger-assisted reverse engineering with x64dbg is documented as future work.
+    It is not part of the current active automated pipeline.
+  </p>
+</section>
+
+{% if active_warnings %}
+<section class="panel">
+  <h2>Warnings</h2>
+  <ul>
+    {% for warning in active_warnings %}
+      <li>{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Developer Diagnostics</h2>
+  <p class="muted">
+    Raw configuration data is still available for debugging.
+  </p>
+  <p><a class="button" href="/api/config/status">Open raw JSON</a></p>
+
+  {% if developer_warnings %}
+  <details>
+    <summary>Developer warnings</summary>
+    <pre>{{ developer_warnings | tojson(indent=2) }}</pre>
+  </details>
+  {% endif %}
+</section>
+{% endblock %}

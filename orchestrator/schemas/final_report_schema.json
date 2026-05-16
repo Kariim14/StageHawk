@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Final Report",
+  "type": "object",
+  "required": ["schema_version", "case", "input_sample", "stage_graph", "limitations"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "case": {"type": "object"},
+    "safety_note": {"type": "string"},
+    "input_sample": {"type": "object"},
+    "static_analysis_summary": {"type": "object"},
+    "stage_candidate_summary": {"type": "object"},
+    "dynamic_analysis_summary": {"type": "object"},
+    "runtime_evidence_summary": {"type": "object"},
+    "extracted_artifacts": {"type": "array"},
+    "recursive_analysis_results": {"type": "array"},
+    "stage_graph": {"type": "object"},
+    "iocs": {"type": "object"},
+    "mitre_style_mapping": {"type": "array"},
+    "limitations": {"type": "array"},
+    "next_steps": {"type": "array"}
+  }
+}

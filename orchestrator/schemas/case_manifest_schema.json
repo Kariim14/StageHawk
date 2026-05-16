@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Case Manifest",
+  "type": "object",
+  "required": ["case_id", "case_name", "sample_path", "current_status", "step_status"],
+  "properties": {
+    "case_id": {"type": "string"},
+    "case_name": {"type": "string"},
+    "sample_path": {"type": "string"},
+    "current_status": {"enum": ["pending", "running", "completed", "failed", "skipped"]},
+    "completed_steps": {"type": "array"},
+    "failed_steps": {"type": "array"},
+    "skipped_steps": {"type": "array"},
+    "step_status": {"type": "object"},
+    "output_paths": {"type": "object"},
+    "timestamps": {"type": "object"},
+    "errors": {"type": "array"},
+    "warnings": {"type": "array"},
+    "analysis_depth": {"type": "integer"},
+    "parent_case_or_stage_if_any": {}
+  }
+}

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StageHawk</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem("stagehawk-theme");
+        document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
+      } catch (error) {
+        document.documentElement.dataset.theme = "light";
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand-link" href="/" aria-label="StageHawk dashboard">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="brand-falcon" viewBox="0 0 40 40" focusable="false" role="img">
+            <path class="falcon-wing" d="M6 22 L23 7 L34 10 L24 18 L35 18 L22 33 L18 24 Z" />
+            <path class="falcon-cut" d="M21 14 L29 12 L23 17 Z" />
+            <path class="falcon-beak" d="M28 18 L36 20 L27 24 Z" />
+            <path class="falcon-eye" d="M22 17 L25 16 L24 18 Z" />
+          </svg>
+        </span>
+        <span class="brand-copy">
+          <strong>StageHawk</strong>
+          <small>Defensive analysis</small>
+        </span>
+      </a>
+      <nav class="topbar-nav" aria-label="Primary">
+        <a href="/">Dashboard</a>
+        <a href="/new">New Analysis</a>
+        <a href="/reputation">Threat Intelligence</a>
+      </nav>
+    </div>
+    <button
+      class="theme-toggle"
+      id="themeToggle"
+      type="button"
+      data-theme-toggle
+      aria-label="Switch to dark mode"
+      aria-pressed="false"
+    >
+      <span class="theme-icon" aria-hidden="true">🌙</span>
+    </button>
+  </header>
+  <main class="shell">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (function () {
+      var storageKey = "stagehawk-theme";
+      var toggle = document.querySelector("[data-theme-toggle]");
+
+      function getSavedTheme() {
+        try {
+          return localStorage.getItem(storageKey);
+        } catch (error) {
+          return "light";
+        }
+      }
+
+      function saveTheme(theme) {
+        try {
+          localStorage.setItem(storageKey, theme);
+        } catch (error) {
+          /* Theme preference is optional; ignore storage restrictions. */
+        }
+      }
+
+      function applyTheme(theme) {
+        var isDark = theme === "dark";
+        document.documentElement.dataset.theme = isDark ? "dark" : "light";
+        if (toggle) {
+          var icon = toggle.querySelector(".theme-icon");
+          if (icon) {
+            icon.textContent = isDark ? "☀" : "🌙";
+          }
+          toggle.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+          toggle.setAttribute("aria-pressed", String(isDark));
+        }
+      }
+
+      applyTheme(getSavedTheme() === "dark" ? "dark" : "light");
+      if (toggle) {
+        toggle.addEventListener("click", function () {
+          var nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+          applyTheme(nextTheme);
+          saveTheme(nextTheme);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
