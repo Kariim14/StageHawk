@@ -1,6 +1,6 @@
 # Multi-Stage Dropper Orchestrator
 
-Defensive academic malware-analysis backend for a controlled, educational multi-stage dropper workflow.
+Defensive malware-analysis backend for a controlled, multi-stage dropper workflow.
 
 The project is being centered around one reusable backend entry point:
 
@@ -8,7 +8,7 @@ The project is being centered around one reusable backend entry point:
 python -m orchestrator analyze samples/fake/fake_dropper_sample.exe --case-name fake_dropper_demo
 ```
 
-Future GUI, web dashboard, or chatbot integrations should call:
+GUI, web dashboard, or chatbot integrations should call:
 
 ```python
 from orchestrator.core.pipeline import run_full_pipeline
