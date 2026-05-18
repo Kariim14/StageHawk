@@ -757,26 +757,11 @@ It is not currently implemented.
 
 ---
 
-## Team
-
 Project supervised by:
 
 ```text
 Prof. Mohamed El-Hmahmy
 ```
-
-Team:
-
-```text
-Karim Hassan
-Omar Ehab Sakr
-Anas Shaker
-Mahmoud Ahmed
-```
-
-Arab Academy for Science, Technology & Maritime Transport  
-Malware Analysis & Reverse Engineering — Conclusion Project  
-May 2026
 
 ---
 
@@ -785,3 +770,23 @@ May 2026
 StageHawk is an evidence-driven defensive analysis orchestrator.
 
 It does not claim perfect malware detection. It helps collect, organize, and explain analysis evidence from static tools, sandbox behavior, signatures, reputation sources, artifacts, timing, reports, and graph reconstruction.
+
+
+---
+
+## Screenshots
+
+### Case Library
+<img src="screenshots/case_library.png" width="800">
+
+### Threat Intelligence
+<img src="screenshots/threat_intelligence.png" width="800">
+
+### System Status
+<img src="screenshots/system_status.png" width="800">
+
+### Scoring
+<img src="screenshots/scoring.png" width="800">
+
+### Artifacts
+<img src="screenshots/artifacts.png" width="800">
