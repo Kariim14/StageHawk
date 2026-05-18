@@ -780,7 +780,7 @@ It does not claim perfect malware detection. It helps collect, organize, and exp
 <img src="screenshots/case_library.png" width="800">
 
 ### Threat Intelligence
-<img src="screenshots/threat_intelligence.png" width="800">
+<img src="screenshots/threat_Intelligence.png" width="800">
 
 ### System Status
 <img src="screenshots/system_status.png" width="800">
